@@ -1,0 +1,380 @@
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "rhel-openssl-3.0.x"]
+  output        = "../../../apps/web/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ──────────────────────────────────────────────
+// ENUMS
+// ──────────────────────────────────────────────
+
+enum UserRole {
+  OWNER       // Organization owner — full access
+  ADMIN       // Can manage memory, skills, users
+  MEMBER      // Can chat, use skills at configured autonomy
+  VIEWER      // Read-only — Decision Inbox visible, no actions
+}
+
+enum MemoryLevel {
+  IDENTITY      // Static, editable — tone, services, ICP, no-gos
+  OPERATIONAL   // Dynamic — auto-fed from IsyTask/IsySocial events
+  EPISODIC      // Vector — conversations, corrections, decisions
+}
+
+enum MemorySourceType {
+  PDF
+  WEBSITE
+  INSTAGRAM_HANDLE
+  MANUAL_TEXT
+  ISYTASK_EVENT
+  ISYSOCIAL_EVENT
+}
+
+enum LLMTier {
+  OPUS      // Planner — complex reasoning
+  SONNET    // Executor — tool calls, main work
+  HAIKU     // Critic — validation, cheap checks
+}
+
+enum AutonomyLevel {
+  L0   // Full manual — agent suggests, user does everything
+  L1   // Agent drafts, user approves before execution
+  L2   // Agent executes non-destructive actions, asks for destructive
+  L3   // Agent executes most actions, user reviews async
+  L4   // Full auto — agent acts, user notified post-facto
+}
+
+enum DecisionStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  EXPIRED
+  AUTO_EXECUTED
+}
+
+enum ConversationStatus {
+  ACTIVE
+  ARCHIVED
+}
+
+// ──────────────────────────────────────────────
+// ORGANIZATION (tenant boundary)
+// ──────────────────────────────────────────────
+
+model Organization {
+  id          String   @id @default(cuid())
+  name        String
+  slug        String   @unique
+  logoUrl     String?
+  plan        String   @default("free") // free | starter | pro | enterprise
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Limits
+  llmMonthlyBudgetCents Int @default(1000) // $10 default
+  llmCurrentMonthCents  Int @default(0)
+
+  // Relations
+  users           OrganizationUser[]
+  clients         Client[]
+  conversations   Conversation[]
+  memoryChunks    MemoryChunk[]
+  memorySources   MemorySource[]
+  skills          SkillConfig[]
+  llmUsage        LLMUsage[]
+  decisions       Decision[]
+  auditLogs       AuditLog[]
+
+  @@map("agent_organizations")
+}
+
+// ──────────────────────────────────────────────
+// USERS
+// ──────────────────────────────────────────────
+
+model User {
+  id            String    @id @default(cuid())
+  email         String    @unique
+  name          String
+  avatarUrl     String?
+  passwordHash  String?
+  emailVerified DateTime?
+  isActive      Boolean   @default(true)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  organizations OrganizationUser[]
+  messages      Message[]
+  decisions     Decision[]        @relation("DecisionActor")
+  auditLogs     AuditLog[]
+
+  @@map("agent_users")
+}
+
+model OrganizationUser {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  userId         String
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role           UserRole     @default(MEMBER)
+  joinedAt       DateTime     @default(now())
+
+  @@unique([organizationId, userId])
+  @@map("agent_organization_users")
+}
+
+// ──────────────────────────────────────────────
+// CLIENTS (sub-context within an org — agency's clients)
+// ──────────────────────────────────────────────
+
+model Client {
+  id              String       @id @default(cuid())
+  organizationId  String
+  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  name            String
+  description     String?
+  logoUrl         String?
+  isActive        Boolean      @default(true)
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  // External IDs for cross-product linking
+  isytaskClientId   String?
+  isysocialClientId String?
+
+  conversations Conversation[]
+  memoryChunks  MemoryChunk[]
+  memorySources MemorySource[]
+  decisions     Decision[]
+
+  @@index([organizationId])
+  @@map("agent_clients")
+}
+
+// ──────────────────────────────────────────────
+// CONVERSATIONS & MESSAGES
+// ──────────────────────────────────────────────
+
+model Conversation {
+  id             String             @id @default(cuid())
+  organizationId String
+  organization   Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  clientId       String?
+  client         Client?            @relation(fields: [clientId], references: [id])
+  title          String?            // Auto-generated summary
+  status         ConversationStatus @default(ACTIVE)
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+
+  messages  Message[]
+  decisions Decision[]
+
+  @@index([organizationId, status])
+  @@index([clientId])
+  @@map("agent_conversations")
+}
+
+model Message {
+  id             String       @id @default(cuid())
+  conversationId String
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  role    String  // "user" | "assistant" | "system" | "tool"
+  content String  // Text content (markdown)
+
+  // If role=assistant — which LLM generated it
+  llmTier   LLMTier?
+  llmModel  String?   // e.g. "claude-sonnet-4-20250514"
+
+  // If role=tool — skill execution metadata
+  skillName   String?  // e.g. "createTask@v1"
+  toolCallId  String?
+  toolInput   Json?
+  toolOutput  Json?
+
+  // Sender (null for assistant/system/tool messages)
+  userId String?
+  user   User?   @relation(fields: [userId], references: [id])
+
+  tokenCount Int? // Total tokens used for this message
+  createdAt  DateTime @default(now())
+
+  @@index([conversationId, createdAt])
+  @@map("agent_messages")
+}
+
+// ──────────────────────────────────────────────
+// BUSINESS MEMORY LAYER
+// ──────────────────────────────────────────────
+
+model MemorySource {
+  id             String           @id @default(cuid())
+  organizationId String
+  organization   Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  clientId       String?
+  client         Client?          @relation(fields: [clientId], references: [id])
+  type           MemorySourceType
+  label          String           // Human label: "Brand Brochure PDF", "Website"
+  sourceUrl      String?          // URL or storage path
+  rawContent     String?          // Extracted text content
+  processedAt    DateTime?
+  errorMessage   String?
+  createdAt      DateTime         @default(now())
+
+  chunks MemoryChunk[]
+
+  @@index([organizationId, type])
+  @@map("agent_memory_sources")
+}
+
+model MemoryChunk {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  clientId       String?
+  client         Client?      @relation(fields: [clientId], references: [id])
+  sourceId       String?
+  source         MemorySource? @relation(fields: [sourceId], references: [id], onDelete: SetNull)
+
+  level     MemoryLevel
+  category  String?       // "tone", "services", "icp", "no-gos", "competitor", etc.
+  content   String        // The actual memory text
+  embedding Float[]       // pgvector — will use vector(1536) via raw SQL migration
+
+  // For Identity memories — user can edit directly
+  isEditable  Boolean  @default(false)
+  editedAt    DateTime?
+
+  // Relevance scoring
+  usageCount  Int      @default(0)
+  lastUsedAt  DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([organizationId, level])
+  @@index([clientId, level])
+  @@map("agent_memory_chunks")
+}
+
+// ──────────────────────────────────────────────
+// SKILLS REGISTRY
+// ──────────────────────────────────────────────
+
+model SkillConfig {
+  id             String        @id @default(cuid())
+  organizationId String
+  organization   Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  skillName      String        // "createTask", "draftPost", "listDMs", etc.
+  version        Int           @default(1)
+  isEnabled      Boolean       @default(true)
+  autonomyLevel  AutonomyLevel @default(L1)
+
+  // Skill-specific config (JSON)
+  config Json @default("{}")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([organizationId, skillName])
+  @@map("agent_skill_configs")
+}
+
+// ──────────────────────────────────────────────
+// DECISION INBOX
+// ──────────────────────────────────────────────
+
+model Decision {
+  id             String         @id @default(cuid())
+  organizationId String
+  organization   Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  clientId       String?
+  client         Client?        @relation(fields: [clientId], references: [id])
+  conversationId String?
+  conversation   Conversation?  @relation(fields: [conversationId], references: [id])
+
+  // What the agent wants to do
+  title       String
+  description String         // Human-readable explanation
+  skillName   String         // Which skill will execute
+  skillInput  Json           // The proposed action payload
+  urgency     Int            @default(0) // 0=normal, 1=important, 2=urgent
+
+  status      DecisionStatus @default(PENDING)
+  statusNote  String?        // Reason for rejection, etc.
+
+  // Who acted on it
+  actorId     String?
+  actor       User?          @relation("DecisionActor", fields: [actorId], references: [id])
+  decidedAt   DateTime?
+  expiresAt   DateTime?      // Auto-expire old decisions
+
+  // Result after execution
+  executionResult Json?
+  executionError  String?
+
+  createdAt DateTime @default(now())
+
+  @@index([organizationId, status])
+  @@index([clientId, status])
+  @@map("agent_decisions")
+}
+
+// ──────────────────────────────────────────────
+// LLM USAGE LEDGER
+// ──────────────────────────────────────────────
+
+model LLMUsage {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  tier          LLMTier
+  model         String    // "claude-opus-4-20250514", etc.
+  inputTokens   Int
+  outputTokens  Int
+  totalTokens   Int
+  costCents     Int       // Cost in cents for this call
+  purpose       String?   // "planner", "executor", "critic", "embedding"
+
+  // Context
+  conversationId String?
+  skillName      String?
+
+  createdAt DateTime @default(now())
+
+  @@index([organizationId, createdAt])
+  @@map("agent_llm_usage")
+}
+
+// ──────────────────────────────────────────────
+// AUDIT LOG
+// ──────────────────────────────────────────────
+
+model AuditLog {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  userId         String?
+  user           User?        @relation(fields: [userId], references: [id])
+
+  action     String  // "MEMORY_CREATED", "DECISION_APPROVED", "SKILL_EXECUTED", etc.
+  entityType String? // "MemoryChunk", "Decision", "Conversation"
+  entityId   String?
+  oldValue   Json?
+  newValue   Json?
+  ipAddress  String?
+  createdAt  DateTime @default(now())
+
+  @@index([organizationId, action])
+  @@index([createdAt])
+  @@map("agent_audit_logs")
+}
