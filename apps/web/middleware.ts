@@ -6,5 +6,7 @@ export const config = {
     "/chat/:path*",
     "/memory/:path*",
     "/settings/:path*",
+    "/usage/:path*",
+    "/team/:path*",
   ],
 };

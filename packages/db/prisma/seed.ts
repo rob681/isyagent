@@ -16,13 +16,19 @@ async function main() {
   // ── 1. Create Organization ──────────────────────────────────────────────────
   const org = await db.organization.upsert({
     where: { slug: "mi-agencia" },
-    update: {},
+    update: {
+      isytaskAgencyId: "cmmkplwq70001npm7x2t66sko",
+      isysocialAgencyId: "cmn0v0orf000111vu1fzced94",
+    },
     create: {
       id: "org_seed_001",
       name: "Mi Agencia",
       slug: "mi-agencia",
       plan: "starter",
       llmMonthlyBudgetCents: 5000, // $50
+      // Cross-product linking: ZPW in IsyTask, BRANDOT in IsySocial
+      isytaskAgencyId: "cmmkplwq70001npm7x2t66sko",
+      isysocialAgencyId: "cmn0v0orf000111vu1fzced94",
     },
   });
   console.log(`✅ Organization: ${org.name} (${org.id})`);

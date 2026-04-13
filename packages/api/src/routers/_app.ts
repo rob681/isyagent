@@ -5,6 +5,8 @@ import { decisionsRouter } from "./decisions.router";
 import { skillsRouter } from "./skills.router";
 import { onboardingRouter } from "./onboarding.router";
 import { usageRouter } from "./usage.router";
+import { notificationsRouter } from "./notifications.router";
+import { teamRouter } from "./team.router";
 
 export const appRouter = router({
   conversations: conversationsRouter,
@@ -13,6 +15,8 @@ export const appRouter = router({
   skills: skillsRouter,
   onboarding: onboardingRouter,
   usage: usageRouter,
+  notifications: notificationsRouter,
+  team: teamRouter,
 });
 
 export type AppRouter = typeof appRouter;

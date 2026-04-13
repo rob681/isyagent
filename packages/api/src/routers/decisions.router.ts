@@ -2,6 +2,8 @@ import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { router, protectedProcedure, getOrgId } from "../trpc";
 import { decisionActionSchema } from "@isyagent/shared";
+import { executeSkill } from "../lib/skill-executor";
+import { createNotification } from "../lib/notify";
 
 export const decisionsRouter = router({
   // List decisions (the Decision Inbox — primary landing page)
@@ -81,8 +83,45 @@ export const decisionsRouter = router({
 
       // If approved, execute the skill
       if (input.action === "APPROVED") {
-        // TODO: Execute skill via Skills Registry
-        // For now, just mark as approved — skill execution comes in Phase 2
+        const result = await executeSkill(
+          ctx.db,
+          decision.skillName,
+          decision.skillInput as Record<string, unknown>,
+          {
+            organizationId: orgId,
+            decisionId: decision.id,
+            clientId: decision.clientId,
+          }
+        );
+
+        // Save execution result
+        await ctx.db.decision.update({
+          where: { id: input.id },
+          data: {
+            executionResult: result.data ? JSON.parse(JSON.stringify(result.data)) : undefined,
+            executionError: result.error ?? undefined,
+          },
+        });
+
+        // Create notification for skill execution result
+        if (result.success) {
+          await createNotification(ctx.db, {
+            organizationId: orgId,
+            title: `Skill ejecutado: ${decision.skillName}`,
+            body: `"${decision.title}" se ejecutó correctamente.`,
+            type: "SKILL_EXECUTED",
+            entityId: decision.id,
+          });
+        } else {
+          console.warn(`[Decision] Skill execution failed for ${decision.id}:`, result.error);
+          await createNotification(ctx.db, {
+            organizationId: orgId,
+            title: `Error en skill: ${decision.skillName}`,
+            body: result.error || "Error desconocido",
+            type: "SKILL_FAILED",
+            entityId: decision.id,
+          });
+        }
       }
 
       return updated;

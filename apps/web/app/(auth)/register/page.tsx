@@ -7,10 +7,12 @@ import Image from "next/image";
 import Link from "next/link";
 import { Eye, EyeOff, Loader2 } from "lucide-react";
 
-export default function LoginPage() {
+export default function RegisterPage() {
   const router = useRouter();
+  const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [organizationName, setOrganizationName] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -20,20 +22,40 @@ export default function LoginPage() {
     setError("");
     setLoading(true);
 
-    const result = await signIn("credentials", {
-      email,
-      password,
-      redirect: false,
-    });
+    try {
+      const res = await fetch("/api/auth/register", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name, email, password, organizationName }),
+      });
 
-    if (result?.error) {
-      setError("Email o contraseña incorrectos");
+      const data = await res.json();
+
+      if (!res.ok) {
+        setError(data.error || "Error al crear cuenta");
+        setLoading(false);
+        return;
+      }
+
+      // Auto sign-in after registration
+      const result = await signIn("credentials", {
+        email,
+        password,
+        redirect: false,
+      });
+
+      if (result?.error) {
+        setError("Cuenta creada pero no se pudo iniciar sesión. Intenta manualmente.");
+        setLoading(false);
+        return;
+      }
+
+      router.push("/decisions");
+      router.refresh();
+    } catch {
+      setError("Error de red. Intenta de nuevo.");
       setLoading(false);
-      return;
     }
-
-    router.push("/decisions");
-    router.refresh();
   }
 
   return (
@@ -48,9 +70,9 @@ export default function LoginPage() {
             height={56}
             className="mb-4"
           />
-          <h1 className="text-2xl font-bold tracking-tight">IsyAgent</h1>
+          <h1 className="text-2xl font-bold tracking-tight">Crear cuenta</h1>
           <p className="text-sm text-muted-foreground mt-1">
-            El cerebro de tu agencia
+            Configura tu agente de IA en minutos
           </p>
         </div>
 
@@ -60,10 +82,38 @@ export default function LoginPage() {
           className="bg-white rounded-xl border shadow-sm p-6 space-y-4"
         >
           <div>
-            <label
-              htmlFor="email"
-              className="block text-sm font-medium text-foreground mb-1.5"
-            >
+            <label htmlFor="orgName" className="block text-sm font-medium text-foreground mb-1.5">
+              Nombre de tu agencia
+            </label>
+            <input
+              id="orgName"
+              type="text"
+              required
+              value={organizationName}
+              onChange={(e) => setOrganizationName(e.target.value)}
+              className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-brand-500 focus:ring-offset-2"
+              placeholder="Mi Agencia Digital"
+              autoFocus
+            />
+          </div>
+
+          <div>
+            <label htmlFor="name" className="block text-sm font-medium text-foreground mb-1.5">
+              Tu nombre
+            </label>
+            <input
+              id="name"
+              type="text"
+              required
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-brand-500 focus:ring-offset-2"
+              placeholder="Roberto García"
+            />
+          </div>
+
+          <div>
+            <label htmlFor="email" className="block text-sm font-medium text-foreground mb-1.5">
               Email
             </label>
             <input
@@ -71,7 +121,6 @@ export default function LoginPage() {
               type="email"
               required
               autoComplete="email"
-              autoFocus
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-brand-500 focus:ring-offset-2"
@@ -80,10 +129,7 @@ export default function LoginPage() {
           </div>
 
           <div>
-            <label
-              htmlFor="password"
-              className="block text-sm font-medium text-foreground mb-1.5"
-            >
+            <label htmlFor="password" className="block text-sm font-medium text-foreground mb-1.5">
               Contraseña
             </label>
             <div className="relative">
@@ -91,22 +137,18 @@ export default function LoginPage() {
                 id="password"
                 type={showPassword ? "text" : "password"}
                 required
-                autoComplete="current-password"
+                minLength={6}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 className="w-full rounded-lg border border-input bg-background px-3 py-2 pr-10 text-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-brand-500 focus:ring-offset-2"
-                placeholder="••••••••"
+                placeholder="Mínimo 6 caracteres"
               />
               <button
                 type="button"
                 onClick={() => setShowPassword(!showPassword)}
                 className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
               >
-                {showPassword ? (
-                  <EyeOff className="h-4 w-4" />
-                ) : (
-                  <Eye className="h-4 w-4" />
-                )}
+                {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
               </button>
             </div>
           </div>
@@ -125,23 +167,19 @@ export default function LoginPage() {
             {loading ? (
               <>
                 <Loader2 className="h-4 w-4 animate-spin" />
-                Ingresando…
+                Creando cuenta…
               </>
             ) : (
-              "Ingresar"
+              "Crear cuenta"
             )}
           </button>
         </form>
 
         <p className="text-center text-sm text-muted-foreground mt-4">
-          ¿No tienes cuenta?{" "}
-          <Link href="/register" className="text-brand-600 hover:underline font-medium">
-            Crear cuenta
+          ¿Ya tienes cuenta?{" "}
+          <Link href="/login" className="text-brand-600 hover:underline font-medium">
+            Ingresar
           </Link>
-        </p>
-
-        <p className="text-center text-xs text-muted-foreground mt-4">
-          IsyAgent v0.1 — Isycheck Suite
         </p>
       </div>
     </div>

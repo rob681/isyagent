@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -16,6 +16,8 @@ import {
   Loader2,
   Save,
   X,
+  Upload,
+  Link,
 } from "lucide-react";
 import { trpc } from "@/lib/trpc/client";
 
@@ -45,6 +47,14 @@ export default function MemoryPage() {
   const [showAddForm, setShowAddForm] = useState(false);
   const [newCategory, setNewCategory] = useState("");
   const [newContent, setNewContent] = useState("");
+
+  // Ingestion state
+  const [showIngestForm, setShowIngestForm] = useState<"PDF" | "WEBSITE" | null>(null);
+  const [ingestLabel, setIngestLabel] = useState("");
+  const [ingestUrl, setIngestUrl] = useState("");
+  const [ingestLoading, setIngestLoading] = useState(false);
+  const [ingestResult, setIngestResult] = useState<{ success: boolean; message: string } | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const { data: memories, isLoading: loadingMemories } = trpc.memory.list.useQuery({
     limit: 50,
@@ -102,6 +112,59 @@ export default function MemoryPage() {
     });
   };
 
+  const handleIngest = async () => {
+    if (!ingestLabel.trim()) return;
+    setIngestLoading(true);
+    setIngestResult(null);
+
+    try {
+      const formData = new FormData();
+      formData.append("type", showIngestForm!);
+      formData.append("label", ingestLabel);
+
+      if (showIngestForm === "PDF") {
+        const file = fileInputRef.current?.files?.[0];
+        if (!file) {
+          setIngestResult({ success: false, message: "Selecciona un archivo PDF" });
+          setIngestLoading(false);
+          return;
+        }
+        formData.append("file", file);
+      } else {
+        if (!ingestUrl.trim()) {
+          setIngestResult({ success: false, message: "Ingresa una URL" });
+          setIngestLoading(false);
+          return;
+        }
+        formData.append("url", ingestUrl);
+      }
+
+      const res = await fetch("/api/ingest", { method: "POST", body: formData });
+      const data = await res.json();
+
+      if (data.success) {
+        setIngestResult({
+          success: true,
+          message: `Se extrajeron ${data.chunksCreated} fragmentos (${Math.round(data.totalChars / 1000)}K caracteres)`,
+        });
+        utils.memory.list.invalidate();
+        utils.memory.sources.invalidate();
+        setTimeout(() => {
+          setShowIngestForm(null);
+          setIngestLabel("");
+          setIngestUrl("");
+          setIngestResult(null);
+        }, 2000);
+      } else {
+        setIngestResult({ success: false, message: data.error || "Error al procesar" });
+      }
+    } catch (err: any) {
+      setIngestResult({ success: false, message: err.message || "Error de red" });
+    } finally {
+      setIngestLoading(false);
+    }
+  };
+
   if (loadingMemories && loadingSources) {
     return (
       <div className="flex h-full items-center justify-center">
@@ -123,11 +186,109 @@ export default function MemoryPage() {
             Lo que tu agente sabe sobre tu negocio. Edita la identidad para mejorar sus respuestas.
           </p>
         </div>
-        <Button className="gap-1" onClick={() => setShowAddForm(!showAddForm)}>
-          <Plus className="h-4 w-4" />
-          Agregar memoria
-        </Button>
+        <div className="flex gap-2">
+          <Button
+            variant="outline"
+            className="gap-1"
+            onClick={() => setShowIngestForm(showIngestForm === "PDF" ? null : "PDF")}
+          >
+            <Upload className="h-4 w-4" />
+            PDF
+          </Button>
+          <Button
+            variant="outline"
+            className="gap-1"
+            onClick={() => setShowIngestForm(showIngestForm === "WEBSITE" ? null : "WEBSITE")}
+          >
+            <Link className="h-4 w-4" />
+            Sitio web
+          </Button>
+          <Button className="gap-1" onClick={() => setShowAddForm(!showAddForm)}>
+            <Plus className="h-4 w-4" />
+            Manual
+          </Button>
+        </div>
       </div>
+
+      {/* Ingest form */}
+      {showIngestForm && (
+        <Card className="mb-6">
+          <CardContent className="p-4 space-y-3">
+            <h3 className="font-semibold text-sm flex items-center gap-2">
+              {showIngestForm === "PDF" ? (
+                <>
+                  <FileText className="h-4 w-4 text-brand-600" />
+                  Subir PDF
+                </>
+              ) : (
+                <>
+                  <Globe className="h-4 w-4 text-brand-600" />
+                  Ingestar sitio web
+                </>
+              )}
+            </h3>
+            <input
+              type="text"
+              placeholder="Nombre descriptivo (ej: Brochure 2024, Sitio web del cliente)"
+              value={ingestLabel}
+              onChange={(e) => setIngestLabel(e.target.value)}
+              className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+            />
+            {showIngestForm === "PDF" ? (
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".pdf"
+                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm file:mr-3 file:rounded-md file:border-0 file:bg-brand-50 file:px-3 file:py-1 file:text-sm file:text-brand-700"
+              />
+            ) : (
+              <input
+                type="url"
+                placeholder="https://ejemplo.com"
+                value={ingestUrl}
+                onChange={(e) => setIngestUrl(e.target.value)}
+                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+              />
+            )}
+            {ingestResult && (
+              <div
+                className={`rounded-md p-2 text-sm ${
+                  ingestResult.success
+                    ? "bg-green-50 text-green-700 border border-green-200"
+                    : "bg-red-50 text-red-700 border border-red-200"
+                }`}
+              >
+                {ingestResult.message}
+              </div>
+            )}
+            <div className="flex gap-2">
+              <Button
+                size="sm"
+                onClick={handleIngest}
+                disabled={ingestLoading || !ingestLabel.trim()}
+              >
+                {ingestLoading ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" />
+                ) : (
+                  <Upload className="h-3.5 w-3.5 mr-1" />
+                )}
+                {ingestLoading ? "Procesando..." : "Procesar"}
+              </Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => {
+                  setShowIngestForm(null);
+                  setIngestResult(null);
+                }}
+              >
+                <X className="h-3.5 w-3.5 mr-1" />
+                Cancelar
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Add form */}
       {showAddForm && (

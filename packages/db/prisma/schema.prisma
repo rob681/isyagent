@@ -80,6 +80,10 @@ model Organization {
   llmMonthlyBudgetCents Int @default(1000) // $10 default
   llmCurrentMonthCents  Int @default(0)
 
+  // Cross-product linking — references agencies.id in IsyTask / IsySocial
+  isytaskAgencyId   String?
+  isysocialAgencyId String?
+
   // Relations
   users           OrganizationUser[]
   clients         Client[]
@@ -89,6 +93,7 @@ model Organization {
   skills          SkillConfig[]
   llmUsage        LLMUsage[]
   decisions       Decision[]
+  notifications   Notification[]
   auditLogs       AuditLog[]
 
   @@map("agent_organizations")
@@ -112,6 +117,7 @@ model User {
   organizations OrganizationUser[]
   messages      Message[]
   decisions     Decision[]        @relation("DecisionActor")
+  notifications Notification[]
   auditLogs     AuditLog[]
 
   @@map("agent_users")
@@ -353,6 +359,30 @@ model LLMUsage {
 
   @@index([organizationId, createdAt])
   @@map("agent_llm_usage")
+}
+
+// ──────────────────────────────────────────────
+// NOTIFICATIONS
+// ──────────────────────────────────────────────
+
+model Notification {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  userId         String?      // Target user (null = all org members)
+  user           User?        @relation(fields: [userId], references: [id])
+
+  title     String
+  body      String
+  type      String   // "DECISION_CREATED", "SKILL_EXECUTED", "SKILL_FAILED", "INGEST_COMPLETE"
+  entityId  String?  // Link to decision/source/etc.
+  isRead    Boolean  @default(false)
+  readAt    DateTime?
+  createdAt DateTime @default(now())
+
+  @@index([organizationId, isRead, createdAt])
+  @@index([userId, isRead])
+  @@map("agent_notifications")
 }
 
 // ──────────────────────────────────────────────
