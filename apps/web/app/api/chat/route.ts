@@ -8,7 +8,7 @@ import { cosineSimilarity } from "@/lib/embeddings-client";
 export const maxDuration = 120; // seconds (requires Pro/Team plan on Vercel)
 
 const anthropic = new Anthropic({
-  apiKey: process.env.ANTHROPIC_API_KEY,
+  apiKey: process.env.ANTHROPIC_API_KEY?.trim(), // trim() removes accidental newlines from env var
 });
 
 const MODEL = "claude-sonnet-4-20250514";
