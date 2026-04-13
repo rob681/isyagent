@@ -51,8 +51,11 @@ export async function POST(req: NextRequest) {
       }
 
       // Extract text from PDF (pdf-parse v1)
+      // NOTE: Import directly from lib/ to bypass the broken test-file auto-load
+      // that causes ENOENT in serverless environments (known bug in pdf-parse v1)
       const buffer = Buffer.from(await file.arrayBuffer());
-      const pdfParse = (await import("pdf-parse")).default;
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const pdfParse = require("pdf-parse/lib/pdf-parse");
       const pdfData = await pdfParse(buffer);
       rawContent = pdfData.text;
       sourceUrl = file.name;
