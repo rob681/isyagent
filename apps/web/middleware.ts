@@ -10,5 +10,7 @@ export const config = {
     "/usage/:path*",
     "/team/:path*",
     "/clients/:path*",
+    "/planner/:path*",
+    "/reports/:path*",
   ],
 };

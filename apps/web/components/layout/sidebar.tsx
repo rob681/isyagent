@@ -18,6 +18,7 @@ import {
   Users,
   LayoutDashboard,
   Users2,
+  FileText,
 } from "lucide-react";
 import { trpc } from "@/lib/trpc/client";
 
@@ -45,6 +46,18 @@ const navItems = [
     href: "/clients",
     icon: Users2,
     description: "Perfiles de clientes",
+  },
+  {
+    label: "Planificador",
+    href: "/planner",
+    icon: Brain,
+    description: "Agente multi-paso con Opus",
+  },
+  {
+    label: "Reportes",
+    href: "/reports",
+    icon: FileText,
+    description: "Informes semanales automáticos",
   },
   {
     label: "Memoria",

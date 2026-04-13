@@ -7,6 +7,8 @@ import { Card, CardContent } from "@/components/ui/card";
 import {
   Zap,
   CheckCircle2,
+  XCircle,
+  HelpCircle,
   Sparkles,
   MessageSquare,
   ArrowRight,
@@ -19,6 +21,7 @@ import {
   AlertTriangle,
   ShieldCheck,
   ShieldAlert,
+  RefreshCw,
 } from "lucide-react";
 import { trpc } from "@/lib/trpc/client";
 
@@ -50,9 +53,17 @@ const PRODUCT_BADGE: Record<string, { label: string; color: string }> = {
   agent: { label: "IsyAgent", color: "bg-brand-100 text-brand-700" },
 };
 
+type ValidationState = {
+  isytask: boolean | null;
+  isysocial: boolean | null;
+  isytaskError: string | null;
+  isysocialError: string | null;
+} | null;
+
 export default function SettingsPage() {
   const utils = trpc.useUtils();
   const [agencySaved, setAgencySaved] = useState(false);
+  const [validation, setValidation] = useState<ValidationState>(null);
 
   const { data: skills, isLoading } = trpc.skills.list.useQuery();
   const { data: org } = trpc.onboarding.getOrg.useQuery();
@@ -72,8 +83,13 @@ export default function SettingsPage() {
     onSuccess: () => {
       utils.onboarding.getOrg.invalidate();
       setAgencySaved(true);
+      setValidation(null); // clear validation after save
       setTimeout(() => setAgencySaved(false), 3000);
     },
+  });
+
+  const validateMutation = trpc.onboarding.validateAgencyIds.useMutation({
+    onSuccess: (data) => setValidation(data),
   });
 
   const updateMutation = trpc.skills.update.useMutation({
@@ -116,40 +132,107 @@ export default function SettingsPage() {
         <Card>
           <CardContent className="p-5 space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {/* IsyTask ID */}
               <div>
                 <label className="block text-sm font-medium mb-1.5 flex items-center gap-1.5">
                   <ClipboardList className="h-4 w-4 text-blue-600" />
                   IsyTask Agency ID
+                  {validation?.isytask === true && (
+                    <span className="ml-auto flex items-center gap-0.5 text-xs text-green-600 font-normal">
+                      <CheckCircle2 className="h-3.5 w-3.5" /> Verificado
+                    </span>
+                  )}
+                  {validation?.isytask === false && (
+                    <span className="ml-auto flex items-center gap-0.5 text-xs text-red-600 font-normal">
+                      <XCircle className="h-3.5 w-3.5" /> No encontrado
+                    </span>
+                  )}
                 </label>
                 <input
                   type="text"
                   placeholder="cmmkplwq70001npm7x2t66sko"
                   value={isytaskId}
-                  onChange={(e) => setIsytaskId(e.target.value)}
-                  className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm font-mono"
+                  onChange={(e) => { setIsytaskId(e.target.value); setValidation(null); }}
+                  className={`w-full rounded-lg border bg-background px-3 py-2 text-sm font-mono transition-colors ${
+                    validation?.isytask === true
+                      ? "border-green-400 bg-green-50/30"
+                      : validation?.isytask === false
+                      ? "border-red-400 bg-red-50/30"
+                      : "border-input"
+                  }`}
                 />
-                <p className="text-xs text-muted-foreground mt-1">
-                  Encuéntralo en IsyTask → Configuración → Agencia → ID
-                </p>
+                {validation?.isytaskError ? (
+                  <p className="text-xs text-red-600 mt-1">{validation.isytaskError}</p>
+                ) : (
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Encuéntralo en IsyTask → Configuración → Agencia → ID
+                  </p>
+                )}
               </div>
+
+              {/* IsySocial ID */}
               <div>
                 <label className="block text-sm font-medium mb-1.5 flex items-center gap-1.5">
                   <Sparkles className="h-4 w-4 text-purple-600" />
                   IsySocial Agency ID
+                  {validation?.isysocial === true && (
+                    <span className="ml-auto flex items-center gap-0.5 text-xs text-green-600 font-normal">
+                      <CheckCircle2 className="h-3.5 w-3.5" /> Verificado
+                    </span>
+                  )}
+                  {validation?.isysocial === false && (
+                    <span className="ml-auto flex items-center gap-0.5 text-xs text-red-600 font-normal">
+                      <XCircle className="h-3.5 w-3.5" /> No encontrado
+                    </span>
+                  )}
                 </label>
                 <input
                   type="text"
                   placeholder="cmn0v0orf000111vu1fzced94"
                   value={isysocialId}
-                  onChange={(e) => setIsysocialId(e.target.value)}
-                  className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm font-mono"
+                  onChange={(e) => { setIsysocialId(e.target.value); setValidation(null); }}
+                  className={`w-full rounded-lg border bg-background px-3 py-2 text-sm font-mono transition-colors ${
+                    validation?.isysocial === true
+                      ? "border-green-400 bg-green-50/30"
+                      : validation?.isysocial === false
+                      ? "border-red-400 bg-red-50/30"
+                      : "border-input"
+                  }`}
                 />
-                <p className="text-xs text-muted-foreground mt-1">
-                  Encuéntralo en IsySocial → Configuración → Agencia → ID
-                </p>
+                {validation?.isysocialError ? (
+                  <p className="text-xs text-red-600 mt-1">{validation.isysocialError}</p>
+                ) : (
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Encuéntralo en IsySocial → Configuración → Agencia → ID
+                  </p>
+                )}
               </div>
             </div>
-            <div className="flex items-center gap-3">
+
+            <div className="flex items-center gap-3 flex-wrap">
+              {/* Verify button */}
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                className="gap-1"
+                onClick={() =>
+                  validateMutation.mutate({
+                    isytaskAgencyId: isytaskId || undefined,
+                    isysocialAgencyId: isysocialId || undefined,
+                  })
+                }
+                disabled={validateMutation.isLoading || (!isytaskId && !isysocialId)}
+              >
+                {validateMutation.isLoading ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <RefreshCw className="h-3.5 w-3.5" />
+                )}
+                Verificar
+              </Button>
+
+              {/* Save button */}
               <Button
                 size="sm"
                 className="gap-1"
@@ -165,16 +248,22 @@ export default function SettingsPage() {
                 )}
                 Guardar
               </Button>
+
               {agencySaved && (
                 <span className="text-sm text-green-600 flex items-center gap-1">
-                  <CheckCircle2 className="h-4 w-4" />
-                  Guardado
+                  <CheckCircle2 className="h-4 w-4" /> Guardado
                 </span>
               )}
-              {org && (org as any).isytaskAgencyId && (
-                <span className="text-xs text-muted-foreground flex items-center gap-1 ml-auto">
-                  <Link2 className="h-3.5 w-3.5 text-green-600" />
-                  Vinculado
+
+              {validation && !validateMutation.isLoading && (
+                <span className="text-xs text-muted-foreground ml-auto flex items-center gap-1">
+                  {validation.isytask === true && validation.isysocial === true ? (
+                    <><CheckCircle2 className="h-3.5 w-3.5 text-green-600" /> Ambos IDs verificados</>
+                  ) : validation.isytask === null && validation.isysocial === null ? (
+                    <><HelpCircle className="h-3.5 w-3.5" /> Ingresa los IDs para verificar</>
+                  ) : (
+                    <><XCircle className="h-3.5 w-3.5 text-amber-500" /> Revisa los IDs marcados</>
+                  )}
                 </span>
               )}
             </div>

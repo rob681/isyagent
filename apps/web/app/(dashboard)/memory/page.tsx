@@ -496,15 +496,52 @@ export default function MemoryPage() {
         </div>
       </div>
 
-      {(!memories || memories.length === 0) && (
-        <Card className="p-12 text-center">
-          <Brain className="h-12 w-12 mx-auto text-muted-foreground/30 mb-3" />
-          <p className="text-muted-foreground font-medium">
-            Sin memorias aún
-          </p>
-          <p className="text-sm text-muted-foreground mt-1">
-            Agrega información sobre tu negocio para que el agente la use
-          </p>
+      {(!memories || memories.length === 0) && !loadingMemories && (
+        <Card className="border-2 border-dashed border-brand-200 bg-brand-50/30">
+          <div className="p-10 text-center space-y-4">
+            <div className="flex items-center justify-center h-16 w-16 rounded-2xl bg-brand-100 mx-auto">
+              <Brain className="h-8 w-8 text-brand-600" />
+            </div>
+            <div>
+              <p className="font-semibold text-lg text-gray-800">
+                El agente no tiene memoria todavía
+              </p>
+              <p className="text-sm text-muted-foreground mt-1 max-w-sm mx-auto">
+                Sin memoria, el agente responde de forma genérica. Añade información sobre tu negocio para que sea útil.
+              </p>
+            </div>
+            <div className="flex flex-col sm:flex-row items-center justify-center gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => setShowAddForm(true)}
+                className="flex items-center gap-2 rounded-lg bg-brand-600 text-white px-4 py-2 text-sm font-medium hover:bg-brand-700 transition-colors"
+              >
+                <Plus className="h-4 w-4" />
+                Añadir manualmente
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowIngestForm("WEBSITE")}
+                className="flex items-center gap-2 rounded-lg border border-border bg-white px-4 py-2 text-sm font-medium hover:bg-muted transition-colors"
+              >
+                <Globe className="h-4 w-4 text-blue-600" />
+                Ingestar sitio web
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowIngestForm("PDF")}
+                className="flex items-center gap-2 rounded-lg border border-border bg-white px-4 py-2 text-sm font-medium hover:bg-muted transition-colors"
+              >
+                <FileText className="h-4 w-4 text-red-500" />
+                Subir PDF
+              </button>
+            </div>
+            <div className="pt-2 border-t border-brand-100">
+              <p className="text-xs text-muted-foreground">
+                💡 Sugerencias: tono de comunicación, servicios que ofreces, clientes ideales (ICP), tarifas, restricciones
+              </p>
+            </div>
+          </div>
         </Card>
       )}
     </div>
