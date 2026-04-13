@@ -71,6 +71,9 @@ importers:
       next-auth:
         specifier: ^4.24.5
         version: 4.24.13(next@14.2.35(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      openai:
+        specifier: ^6.34.0
+        version: 6.34.0(zod@3.25.76)
       pdf-parse:
         specifier: 1.1.1
         version: 1.1.1
@@ -142,6 +145,9 @@ importers:
       '@trpc/server':
         specifier: ^10.45.0
         version: 10.45.4
+      openai:
+        specifier: ^6.34.0
+        version: 6.34.0(zod@3.25.76)
       superjson:
         specifier: ^2.2.0
         version: 2.2.6
@@ -870,6 +876,18 @@ packages:
   oidc-token-hash@5.2.0:
     resolution: {integrity: sha512-6gj2m8cJZ+iSW8bm0FXdGF0YhIQbKrfP4yWTNzxc31U6MOjfEmB1rHvlYvxI1B7t7BCi1F2vYTT6YhtQRG4hxw==}
     engines: {node: ^10.13.0 || >=12.0.0}
+
+  openai@6.34.0:
+    resolution: {integrity: sha512-yEr2jdGf4tVFYG6ohmr3pF6VJuveP0EA/sS8TBx+4Eq5NT10alu5zg2dmxMXMgqpihRDQlFGpRt2XwsGj+Fyxw==}
+    hasBin: true
+    peerDependencies:
+      ws: ^8.18.0
+      zod: ^3.25 || ^4.0
+    peerDependenciesMeta:
+      ws:
+        optional: true
+      zod:
+        optional: true
 
   openid-client@5.7.1:
     resolution: {integrity: sha512-jDBPgSVfTnkIh71Hg9pRvtJc6wTwqjRkN88+gCFtYWrlP4Yx2Dsrow8uPi3qLr/aeymPF3o2+dS+wOpglK04ew==}
@@ -1704,6 +1722,10 @@ snapshots:
   object-hash@3.0.0: {}
 
   oidc-token-hash@5.2.0: {}
+
+  openai@6.34.0(zod@3.25.76):
+    optionalDependencies:
+      zod: 3.25.76
 
   openid-client@5.7.1:
     dependencies:

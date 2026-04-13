@@ -6,6 +6,7 @@ import {
   updateMemorySchema,
   ingestSourceSchema,
 } from "@isyagent/shared";
+import { embedText } from "../lib/embeddings";
 
 export const memoryRouter = router({
   // List memory chunks (filterable by level, client, category)
@@ -151,5 +152,52 @@ export const memoryRouter = router({
       }
 
       return source;
+    }),
+
+  // Vectorize a memory chunk (admin only)
+  vectorize: adminProcedure
+    .input(z.object({ id: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      const orgId = getOrgId(ctx);
+
+      const chunk = await ctx.db.memoryChunk.findFirst({
+        where: { id: input.id, organizationId: orgId },
+      });
+
+      if (!chunk) throw new TRPCError({ code: "NOT_FOUND" });
+
+      const embedding = await embedText(chunk.content);
+
+      return ctx.db.memoryChunk.update({
+        where: { id: input.id },
+        data: { embedding },
+      });
+    }),
+
+  // Vectorize all memories for an organization (admin only)
+  vectorizeAll: adminProcedure
+    .input(z.object({ limit: z.number().default(100) }))
+    .mutation(async ({ ctx, input }) => {
+      const orgId = getOrgId(ctx);
+
+      // Find all memories and filter for null embeddings in memory
+      const all = await ctx.db.memoryChunk.findMany({
+        where: { organizationId: orgId },
+        take: input.limit,
+      });
+
+      const unvectorized = all.filter((chunk) => !chunk.embedding);
+
+      let vectorized = 0;
+      for (const chunk of unvectorized) {
+        const embedding = await embedText(chunk.content);
+        await ctx.db.memoryChunk.update({
+          where: { id: chunk.id },
+          data: { embedding },
+        });
+        vectorized++;
+      }
+
+      return { vectorized, remaining: unvectorized.length };
     }),
 });

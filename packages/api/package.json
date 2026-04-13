@@ -11,6 +11,7 @@
     "@isyagent/db": "workspace:*",
     "@isyagent/shared": "workspace:*",
     "@trpc/server": "^10.45.0",
+    "openai": "^6.34.0",
     "superjson": "^2.2.0",
     "zod": "^3.23.0"
   },

@@ -2,16 +2,51 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { db } from "@isyagent/db";
 import Anthropic from "@anthropic-ai/sdk";
+import { OpenAI } from "openai";
+import { cosineSimilarity } from "@/lib/embeddings-client";
 
 const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
 });
 
+const openai = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY,
+});
+
 const MODEL = "claude-sonnet-4-20250514";
+const EMBEDDING_MODEL = "text-embedding-3-small";
+const EMBEDDING_DIM = 1536;
+
+/**
+ * Embed text using OpenAI API
+ */
+async function embedText(text: string): Promise<number[]> {
+  if (!text || text.trim().length === 0) {
+    return new Array(EMBEDDING_DIM).fill(0);
+  }
+
+  try {
+    const response = await openai.embeddings.create({
+      model: EMBEDDING_MODEL,
+      input: text.slice(0, 8191),
+      encoding_format: "float",
+    });
+
+    const embedding = response.data[0]?.embedding;
+    if (!embedding || embedding.length !== EMBEDDING_DIM) {
+      return new Array(EMBEDDING_DIM).fill(0);
+    }
+
+    return embedding as number[];
+  } catch (err) {
+    console.error("[Chat] Embedding error:", err);
+    return new Array(EMBEDDING_DIM).fill(0);
+  }
+}
 
 // ── Build system prompt from business memory ────────────────────────────────
 
-async function buildSystemPrompt(orgId: string): Promise<string> {
+async function buildSystemPrompt(orgId: string, retrievedMemories?: string): Promise<string> {
   const memories = await db.memoryChunk.findMany({
     where: { organizationId: orgId, level: "IDENTITY" },
     select: { level: true, category: true, content: true },
@@ -50,6 +85,7 @@ async function buildSystemPrompt(orgId: string): Promise<string> {
 <business_memory>
 ${memorySection}
 </business_memory>
+${retrievedMemories ? `\n## Contexto relevante para esta pregunta\n<retrieved_context>\n${retrievedMemories}\n</retrieved_context>` : ""}
 
 ## Herramientas disponibles
 ${skillsSection}
@@ -94,8 +130,42 @@ export async function POST(req: Request) {
     },
   });
 
+  // ── 2.5. Retrieve similar memories (RAG) via vector similarity ──────────────
+  let retrievedContext = "";
+  try {
+    const queryEmbedding = await embedText(content);
+    const allMemories = await db.memoryChunk.findMany({
+      where: { organizationId: orgId },
+      select: { id: true, content: true, embedding: true, category: true },
+      take: 50,
+    });
+
+    const similar = allMemories
+      .filter((m) => m.embedding && Array.isArray(m.embedding))
+      .map((m) => ({
+        id: m.id,
+        content: m.content,
+        category: m.category,
+        similarity: cosineSimilarity(
+          queryEmbedding,
+          m.embedding as unknown as number[]
+        ),
+      }))
+      .filter((m) => m.similarity > 0.6)
+      .sort((a, b) => b.similarity - a.similarity)
+      .slice(0, 5);
+
+    if (similar.length > 0) {
+      retrievedContext = similar
+        .map((m) => `[${m.category || "general"}] (relevancia: ${(m.similarity * 100).toFixed(0)}%) ${m.content}`)
+        .join("\n\n");
+    }
+  } catch (err) {
+    console.warn("[Chat] RAG error (continuing without retrieval):", err);
+  }
+
   // ── 3. Build system prompt with org memory ──────────────────────────────
-  const systemPrompt = await buildSystemPrompt(orgId);
+  const systemPrompt = await buildSystemPrompt(orgId, retrievedContext);
 
   // ── 4. Build messages array from history ────────────────────────────────
   const messages: Array<{ role: "user" | "assistant"; content: string }> = [

@@ -252,7 +252,7 @@ model MemoryChunk {
   level     MemoryLevel
   category  String?       // "tone", "services", "icp", "no-gos", "competitor", etc.
   content   String        // The actual memory text
-  embedding Float[]       // pgvector — will use vector(1536) via raw SQL migration
+  embedding Json?         // Vector embedding as JSON array [float, float, ...] (1536 dims for text-3-small)
 
   // For Identity memories — user can edit directly
   isEditable  Boolean  @default(false)
