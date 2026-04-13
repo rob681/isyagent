@@ -55,6 +55,28 @@ export const teamRouter = router({
           },
         });
 
+        // Send invite email if RESEND_API_KEY is set
+        const resendKey = process.env.RESEND_API_KEY;
+        if (resendKey) {
+          try {
+            await fetch("https://api.resend.com/emails", {
+              method: "POST",
+              headers: {
+                Authorization: `Bearer ${resendKey}`,
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({
+                from: "IsyAgent <noreply@isyagent.dev>",
+                to: input.email,
+                subject: "Te invitaron a IsyAgent",
+                html: `<p>Hola,</p><p>Has sido invitado a unirte a una organización en <strong>IsyAgent</strong>.</p><p>Ingresa a <a href="https://app.isyagent.dev">app.isyagent.dev</a> con tu cuenta para acceder.</p><p>¡Bienvenido!</p>`,
+              }),
+            });
+          } catch (emailErr) {
+            console.error("[TeamRouter] Failed to send invite email:", emailErr);
+          }
+        }
+
         return { membership, isExistingUser: true };
       }
 
@@ -76,7 +98,27 @@ export const teamRouter = router({
         },
       });
 
-      // TODO: Send invite email
+      // Send invite email if RESEND_API_KEY is set
+      const resendKeyNew = process.env.RESEND_API_KEY;
+      if (resendKeyNew) {
+        try {
+          await fetch("https://api.resend.com/emails", {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${resendKeyNew}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              from: "IsyAgent <noreply@isyagent.dev>",
+              to: input.email,
+              subject: "Te invitaron a IsyAgent",
+              html: `<p>Hola,</p><p>Has sido invitado a unirte a una organización en <strong>IsyAgent</strong>.</p><p>Crea tu cuenta en <a href="https://app.isyagent.dev/register">app.isyagent.dev/register</a> usando este correo para acceder.</p><p>¡Bienvenido!</p>`,
+            }),
+          });
+        } catch (emailErr) {
+          console.error("[TeamRouter] Failed to send invite email:", emailErr);
+        }
+      }
 
       return { membership, isExistingUser: false, inviteUserId: placeholderUser.id };
     }),

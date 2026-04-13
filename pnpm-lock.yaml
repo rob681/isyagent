@@ -133,6 +133,9 @@ importers:
 
   packages/api:
     dependencies:
+      '@isyagent/ai':
+        specifier: workspace:*
+        version: link:../ai
       '@isyagent/db':
         specifier: workspace:*
         version: link:../db

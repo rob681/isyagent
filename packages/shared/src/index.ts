@@ -62,6 +62,18 @@ export const SKILL_LABELS: Record<
     product: "agent",
     risk: "low",
   },
+  schedulePost: {
+    name: "Programar publicación",
+    description: "Programa un post para publicarse en fecha/hora específica en IsySocial",
+    product: "isysocial",
+    risk: "medium",
+  },
+  generateContent: {
+    name: "Generar contenido",
+    description: "Genera copy, hashtags y sugerencias de imagen con IA",
+    product: "agent",
+    risk: "low",
+  },
 };
 
 // ─── Re-exports ───────────────────────────────────────────────────────────────

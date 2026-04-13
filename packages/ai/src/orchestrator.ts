@@ -70,8 +70,8 @@ export class AgentOrchestrator {
     });
 
     const textContent = response.content
-      .filter((block): block is { type: "text"; text: string } => block.type === "text")
-      .map((block) => block.text)
+      .filter((block) => block.type === "text")
+      .map((block) => (block as { type: "text"; text: string }).text)
       .join("\n");
 
     return {
@@ -96,8 +96,8 @@ export class AgentOrchestrator {
     });
 
     return response.content
-      .filter((block): block is { type: "text"; text: string } => block.type === "text")
-      .map((block) => block.text)
+      .filter((block) => block.type === "text")
+      .map((block) => (block as { type: "text"; text: string }).text)
       .join("");
   }
 
@@ -113,8 +113,8 @@ export class AgentOrchestrator {
     });
 
     return response.content
-      .filter((block): block is { type: "text"; text: string } => block.type === "text")
-      .map((block) => block.text)
+      .filter((block) => block.type === "text")
+      .map((block) => (block as { type: "text"; text: string }).text)
       .join("");
   }
 }

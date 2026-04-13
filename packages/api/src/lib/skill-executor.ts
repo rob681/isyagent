@@ -14,6 +14,7 @@
  */
 
 import { PrismaClient } from "../../../../apps/web/generated/prisma";
+import { createAnthropicClient } from "@isyagent/ai";
 
 // ──────────────────────────────────────────────
 // Types
@@ -50,6 +51,18 @@ interface DraftPostInput {
   hashtags?: string;
 }
 
+interface SchedulePostInput {
+  postId: string; // ID of existing iso_post to schedule
+  scheduledAt: string; // ISO datetime string
+}
+
+interface GenerateContentInput {
+  topic: string;
+  network?: "FACEBOOK" | "INSTAGRAM" | "LINKEDIN" | "TIKTOK" | "X";
+  tone?: string;
+  language?: string;
+}
+
 // ──────────────────────────────────────────────
 // Main executor
 // ──────────────────────────────────────────────
@@ -74,6 +87,12 @@ export async function executeSkill(
 
       case "summarizeClient":
         return await executeSummarizeClient(db, skillInput as unknown as SummarizeClientInput, context);
+
+      case "schedulePost":
+        return await executeSchedulePost(db, skillInput as unknown as SchedulePostInput, context);
+
+      case "generateContent":
+        return await executeGenerateContent(skillInput as unknown as GenerateContentInput);
 
       case "listDMs":
         return {
@@ -413,6 +432,109 @@ async function executeSummarizeClient(
       taskStats,
       postStats,
       summary,
+    },
+  };
+}
+
+// ──────────────────────────────────────────────
+// schedulePost — Updates an existing iso_post to SCHEDULED status
+// ──────────────────────────────────────────────
+
+async function executeSchedulePost(
+  db: PrismaClient,
+  input: SchedulePostInput,
+  context: { organizationId: string; decisionId: string; clientId?: string | null }
+): Promise<SkillResult> {
+  if (!input.postId) {
+    return { success: false, error: "postId es requerido para programar una publicación" };
+  }
+
+  if (!input.scheduledAt) {
+    return { success: false, error: "scheduledAt es requerido para programar una publicación" };
+  }
+
+  const scheduledAt = new Date(input.scheduledAt);
+  if (isNaN(scheduledAt.getTime())) {
+    return { success: false, error: "scheduledAt no es una fecha válida" };
+  }
+
+  await db.$executeRaw`
+    UPDATE isysocial."iso_posts"
+    SET "status" = 'SCHEDULED'::isysocial."PostStatus",
+        "scheduledAt" = ${scheduledAt},
+        "updatedAt" = NOW()
+    WHERE "id" = ${input.postId}
+  `;
+
+  console.log(`[SkillExecutor] Scheduled post ${input.postId} for ${scheduledAt.toISOString()}`);
+
+  return {
+    success: true,
+    data: {
+      postId: input.postId,
+      scheduledAt: scheduledAt.toISOString(),
+      status: "SCHEDULED",
+    },
+  };
+}
+
+// ──────────────────────────────────────────────
+// generateContent — Uses Anthropic Haiku to generate copy/hashtags
+// ──────────────────────────────────────────────
+
+async function executeGenerateContent(input: GenerateContentInput): Promise<SkillResult> {
+  if (!input.topic) {
+    return { success: false, error: "topic es requerido para generar contenido" };
+  }
+
+  const anthropic = createAnthropicClient();
+
+  const network = input.network || "INSTAGRAM";
+  const tone = input.tone || "profesional y cercano";
+  const language = input.language || "es";
+
+  const prompt = `Eres un experto en marketing digital. Genera contenido para una publicación en ${network}.
+
+Tema: ${input.topic}
+Tono: ${tone}
+Idioma: ${language === "es" ? "español" : language}
+
+Responde ÚNICAMENTE con un JSON con esta estructura exacta (sin markdown):
+{
+  "copy": "texto del post (máximo 2200 caracteres para Instagram, 280 para X)",
+  "hashtags": "#hashtag1 #hashtag2 #hashtag3 (máximo 10 hashtags relevantes)",
+  "imageDescription": "descripción de la imagen sugerida para acompañar el post",
+  "callToAction": "frase de llamada a la acción"
+}`;
+
+  const message = await anthropic.messages.create({
+    model: "claude-haiku-4-20250514",
+    max_tokens: 1024,
+    messages: [{ role: "user", content: prompt }],
+  });
+
+  const rawText = message.content[0]?.type === "text" ? message.content[0].text : "";
+
+  let parsed: Record<string, string> = {};
+  try {
+    parsed = JSON.parse(rawText);
+  } catch {
+    // Fallback: return raw text
+    parsed = { copy: rawText, hashtags: "", imageDescription: "", callToAction: "" };
+  }
+
+  console.log(`[SkillExecutor] Generated content for topic "${input.topic}" on ${network}`);
+
+  return {
+    success: true,
+    data: {
+      topic: input.topic,
+      network,
+      copy: parsed.copy || "",
+      hashtags: parsed.hashtags || "",
+      imageDescription: parsed.imageDescription || "",
+      callToAction: parsed.callToAction || "",
+      model: "claude-haiku-4-20250514",
     },
   };
 }

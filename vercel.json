@@ -3,5 +3,11 @@
   "buildCommand": "pnpm --filter @isyagent/web build",
   "installCommand": "pnpm install",
   "outputDirectory": "apps/web/.next",
-  "framework": "nextjs"
+  "framework": "nextjs",
+  "crons": [
+    {
+      "path": "/api/cron/proactive",
+      "schedule": "0 9 * * *"
+    }
+  ]
 }

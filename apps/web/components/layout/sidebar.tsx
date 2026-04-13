@@ -16,10 +16,18 @@ import {
   Bell,
   Check,
   Users,
+  LayoutDashboard,
+  Users2,
 } from "lucide-react";
 import { trpc } from "@/lib/trpc/client";
 
 const navItems = [
+  {
+    label: "Dashboard",
+    href: "/dashboard",
+    icon: LayoutDashboard,
+    description: "Panel de control",
+  },
   {
     label: "Decisiones",
     href: "/decisions",
@@ -31,6 +39,12 @@ const navItems = [
     href: "/chat",
     icon: MessageSquare,
     description: "Conversa con el agente",
+  },
+  {
+    label: "Clientes",
+    href: "/clients",
+    icon: Users2,
+    description: "Perfiles de clientes",
   },
   {
     label: "Memoria",

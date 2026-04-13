@@ -8,6 +8,7 @@
     "lint": "tsc --noEmit"
   },
   "dependencies": {
+    "@isyagent/ai": "workspace:*",
     "@isyagent/db": "workspace:*",
     "@isyagent/shared": "workspace:*",
     "@trpc/server": "^10.45.0",
