@@ -2,32 +2,33 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { db } from "@isyagent/db";
 import Anthropic from "@anthropic-ai/sdk";
-import { OpenAI } from "openai";
 import { cosineSimilarity } from "@/lib/embeddings-client";
+
+// ── Increase function timeout for long LLM responses ──────────────────────
+export const maxDuration = 120; // seconds (requires Pro/Team plan on Vercel)
 
 const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
 });
 
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
-
 const MODEL = "claude-sonnet-4-20250514";
-const EMBEDDING_MODEL = "text-embedding-3-small";
 const EMBEDDING_DIM = 1536;
 
 /**
- * Embed text using OpenAI API
+ * Embed text using OpenAI API (lazy init — only if OPENAI_API_KEY is set)
  */
 async function embedText(text: string): Promise<number[]> {
-  if (!text || text.trim().length === 0) {
+  const apiKey = process.env.OPENAI_API_KEY;
+  if (!apiKey || !text.trim()) {
     return new Array(EMBEDDING_DIM).fill(0);
   }
 
   try {
+    // Lazy import to avoid module-level failure when OPENAI_API_KEY is missing
+    const { OpenAI } = await import("openai");
+    const openai = new OpenAI({ apiKey });
     const response = await openai.embeddings.create({
-      model: EMBEDDING_MODEL,
+      model: "text-embedding-3-small",
       input: text.slice(0, 8191),
       encoding_format: "float",
     });
@@ -36,10 +37,9 @@ async function embedText(text: string): Promise<number[]> {
     if (!embedding || embedding.length !== EMBEDDING_DIM) {
       return new Array(EMBEDDING_DIM).fill(0);
     }
-
     return embedding as number[];
   } catch (err) {
-    console.error("[Chat] Embedding error:", err);
+    console.warn("[Chat] Embedding error (skipping RAG):", err);
     return new Array(EMBEDDING_DIM).fill(0);
   }
 }
@@ -130,44 +130,46 @@ export async function POST(req: Request) {
     },
   });
 
-  // ── 2.5. Retrieve similar memories (RAG) via vector similarity ──────────────
+  // ── 2.5. Retrieve similar memories (RAG) — graceful fallback ─────────────
   let retrievedContext = "";
   try {
     const queryEmbedding = await embedText(content);
-    const allMemories = await db.memoryChunk.findMany({
-      where: { organizationId: orgId },
-      select: { id: true, content: true, embedding: true, category: true },
-      take: 50,
-    });
+    const isZero = queryEmbedding.every((v) => v === 0);
+    if (!isZero) {
+      const allMemories = await db.memoryChunk.findMany({
+        where: { organizationId: orgId },
+        select: { id: true, content: true, embedding: true, category: true },
+        take: 50,
+      });
 
-    const similar = allMemories
-      .filter((m) => m.embedding && Array.isArray(m.embedding))
-      .map((m) => ({
-        id: m.id,
-        content: m.content,
-        category: m.category,
-        similarity: cosineSimilarity(
-          queryEmbedding,
-          m.embedding as unknown as number[]
-        ),
-      }))
-      .filter((m) => m.similarity > 0.6)
-      .sort((a, b) => b.similarity - a.similarity)
-      .slice(0, 5);
+      const similar = allMemories
+        .filter((m) => m.embedding && Array.isArray(m.embedding))
+        .map((m) => ({
+          content: m.content,
+          category: m.category,
+          similarity: cosineSimilarity(
+            queryEmbedding,
+            m.embedding as unknown as number[]
+          ),
+        }))
+        .filter((m) => m.similarity > 0.6)
+        .sort((a, b) => b.similarity - a.similarity)
+        .slice(0, 5);
 
-    if (similar.length > 0) {
-      retrievedContext = similar
-        .map((m) => `[${m.category || "general"}] (relevancia: ${(m.similarity * 100).toFixed(0)}%) ${m.content}`)
-        .join("\n\n");
+      if (similar.length > 0) {
+        retrievedContext = similar
+          .map((m) => `[${m.category || "general"}] (${(m.similarity * 100).toFixed(0)}%) ${m.content}`)
+          .join("\n\n");
+      }
     }
   } catch (err) {
-    console.warn("[Chat] RAG error (continuing without retrieval):", err);
+    console.warn("[Chat] RAG skipped:", err);
   }
 
-  // ── 3. Build system prompt with org memory ──────────────────────────────
+  // ── 3. Build system prompt ──────────────────────────────────────────────
   const systemPrompt = await buildSystemPrompt(orgId, retrievedContext);
 
-  // ── 4. Build messages array from history ────────────────────────────────
+  // ── 4. Build messages array ─────────────────────────────────────────────
   const messages: Array<{ role: "user" | "assistant"; content: string }> = [
     ...(history ?? []).map((m: { role: string; content: string }) => ({
       role: m.role as "user" | "assistant",
@@ -176,32 +178,40 @@ export async function POST(req: Request) {
     { role: "user", content },
   ];
 
-  // ── 5. Stream from Anthropic ────────────────────────────────────────────
-  const stream = anthropic.messages.stream({
-    model: MODEL,
-    max_tokens: 4096,
-    system: systemPrompt,
-    messages,
-  });
-
-  // Create a ReadableStream that forwards Anthropic events as SSE
+  // ── 5. Stream from Anthropic (non-streaming API for reliability) ──────────
   const encoder = new TextEncoder();
-  let fullContent = "";
 
   const readable = new ReadableStream({
     async start(controller) {
+      let fullContent = "";
+
       try {
-        stream.on("text", (text) => {
-          fullContent += text;
-          controller.enqueue(
-            encoder.encode(`data: ${JSON.stringify({ type: "text", text })}\n\n`)
-          );
+        // Use the iterable streaming approach — more reliable in serverless
+        const stream = await anthropic.messages.stream({
+          model: MODEL,
+          max_tokens: 4096,
+          system: systemPrompt,
+          messages,
         });
 
-        // Wait for the stream to complete
+        for await (const event of stream) {
+          if (
+            event.type === "content_block_delta" &&
+            event.delta.type === "text_delta"
+          ) {
+            const text = event.delta.text;
+            fullContent += text;
+            controller.enqueue(
+              encoder.encode(
+                `data: ${JSON.stringify({ type: "text", text })}\n\n`
+              )
+            );
+          }
+        }
+
         const finalMessage = await stream.finalMessage();
 
-        // Send conversation ID and usage info
+        // ── Send done event ───────────────────────────────────────────────
         controller.enqueue(
           encoder.encode(
             `data: ${JSON.stringify({
@@ -215,50 +225,61 @@ export async function POST(req: Request) {
           )
         );
 
-        // ── 6. Persist assistant message ────────────────────────────────────
-        await db.message.create({
-          data: {
-            conversationId: convId,
-            role: "assistant",
-            content: fullContent,
-            llmTier: "SONNET",
-            llmModel: MODEL,
-            tokenCount:
-              finalMessage.usage.input_tokens + finalMessage.usage.output_tokens,
-          },
-        });
+        // ── Persist assistant message (fire-and-forget style) ─────────────
+        try {
+          await db.message.create({
+            data: {
+              conversationId: convId,
+              role: "assistant",
+              content: fullContent,
+              llmTier: "SONNET",
+              llmModel: MODEL,
+              tokenCount:
+                finalMessage.usage.input_tokens + finalMessage.usage.output_tokens,
+            },
+          });
 
-        // ── 7. Log LLM usage ────────────────────────────────────────────────
-        await db.lLMUsage.create({
-          data: {
-            organizationId: orgId,
-            tier: "SONNET",
-            model: MODEL,
-            inputTokens: finalMessage.usage.input_tokens,
-            outputTokens: finalMessage.usage.output_tokens,
-            totalTokens:
-              finalMessage.usage.input_tokens + finalMessage.usage.output_tokens,
-            costCents: Math.ceil(
-              (finalMessage.usage.input_tokens * 0.3 +
-                finalMessage.usage.output_tokens * 1.5) /
-                100000
-            ),
-            purpose: "chat",
-            conversationId: convId,
-          },
-        });
+          await db.lLMUsage.create({
+            data: {
+              organizationId: orgId,
+              tier: "SONNET",
+              model: MODEL,
+              inputTokens: finalMessage.usage.input_tokens,
+              outputTokens: finalMessage.usage.output_tokens,
+              totalTokens:
+                finalMessage.usage.input_tokens + finalMessage.usage.output_tokens,
+              costCents: Math.ceil(
+                (finalMessage.usage.input_tokens * 0.3 +
+                  finalMessage.usage.output_tokens * 1.5) /
+                  100000
+              ),
+              purpose: "chat",
+              conversationId: convId,
+            },
+          });
 
-        // Update conversation timestamp
-        await db.conversation.update({
-          where: { id: convId },
-          data: { updatedAt: new Date() },
-        });
+          await db.conversation.update({
+            where: { id: convId },
+            data: { updatedAt: new Date() },
+          });
+        } catch (dbErr) {
+          console.error("[Chat] DB persist error:", dbErr);
+          // Don't fail the user response for DB errors
+        }
 
         controller.close();
       } catch (error: any) {
+        console.error("[Chat] Stream error:", error);
+        const errMsg =
+          error?.status === 401
+            ? "API key de Anthropic inválida. Verifica ANTHROPIC_API_KEY."
+            : error?.status === 429
+            ? "Límite de velocidad alcanzado. Intenta de nuevo en un momento."
+            : error?.message ?? "Error desconocido";
+
         controller.enqueue(
           encoder.encode(
-            `data: ${JSON.stringify({ type: "error", message: error?.message ?? "Error desconocido" })}\n\n`
+            `data: ${JSON.stringify({ type: "error", message: errMsg })}\n\n`
           )
         );
         controller.close();
