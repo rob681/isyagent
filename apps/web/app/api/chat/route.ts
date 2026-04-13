@@ -186,29 +186,25 @@ export async function POST(req: Request) {
       let fullContent = "";
 
       try {
-        // Use the iterable streaming approach — more reliable in serverless
-        const stream = await anthropic.messages.stream({
+        // Use event-emitter streaming — most reliable pattern in serverless
+        const stream = anthropic.messages.stream({
           model: MODEL,
           max_tokens: 4096,
           system: systemPrompt,
           messages,
         });
 
-        for await (const event of stream) {
-          if (
-            event.type === "content_block_delta" &&
-            event.delta.type === "text_delta"
-          ) {
-            const text = event.delta.text;
-            fullContent += text;
-            controller.enqueue(
-              encoder.encode(
-                `data: ${JSON.stringify({ type: "text", text })}\n\n`
-              )
-            );
-          }
-        }
+        // Collect text via event listener
+        stream.on("text", (text: string) => {
+          fullContent += text;
+          controller.enqueue(
+            encoder.encode(
+              `data: ${JSON.stringify({ type: "text", text })}\n\n`
+            )
+          );
+        });
 
+        // Wait for stream to complete (throws on connection errors)
         const finalMessage = await stream.finalMessage();
 
         // ── Send done event ───────────────────────────────────────────────
