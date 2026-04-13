@@ -26,3 +26,4 @@ apps/web/generated/
 # Debug
 npm-debug.log*
 pnpm-debug.log*
+.vercel

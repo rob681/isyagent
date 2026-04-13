@@ -4,13 +4,14 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useSession, signOut } from "next-auth/react";
 import { cn } from "@/lib/utils";
+import Image from "next/image";
 import {
   Inbox,
   MessageSquare,
   Brain,
   Zap,
+  BarChart3,
   LogOut,
-  Sparkles,
 } from "lucide-react";
 
 const navItems = [
@@ -38,6 +39,12 @@ const navItems = [
     icon: Zap,
     description: "Configura skills y autonomía",
   },
+  {
+    label: "Uso LLM",
+    href: "/usage",
+    icon: BarChart3,
+    description: "Consumo de tokens y costos",
+  },
 ];
 
 export function Sidebar() {
@@ -55,10 +62,14 @@ export function Sidebar() {
   return (
     <aside className="flex h-screen w-64 flex-col border-r bg-card">
       {/* Logo */}
-      <div className="flex items-center gap-2 border-b px-4 py-4">
-        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand-600">
-          <Sparkles className="h-4 w-4 text-white" />
-        </div>
+      <div className="flex items-center gap-3 border-b px-4 py-4">
+        <Image
+          src="/icon-color.svg"
+          alt="IsyAgent"
+          width={32}
+          height={32}
+          className="rounded-lg"
+        />
         <span className="text-lg font-bold tracking-tight">IsyAgent</span>
       </div>
 

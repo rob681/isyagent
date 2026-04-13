@@ -3,7 +3,8 @@
 import { useState } from "react";
 import { signIn } from "next-auth/react";
 import { useRouter } from "next/navigation";
-import { Sparkles, Eye, EyeOff, Loader2 } from "lucide-react";
+import Image from "next/image";
+import { Eye, EyeOff, Loader2 } from "lucide-react";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -39,9 +40,13 @@ export default function LoginPage() {
       <div className="w-full max-w-sm mx-4">
         {/* Logo */}
         <div className="flex flex-col items-center mb-8">
-          <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-brand-600 mb-4 shadow-lg shadow-brand-600/25">
-            <Sparkles className="h-7 w-7 text-white" />
-          </div>
+          <Image
+            src="/icon-color.svg"
+            alt="IsyAgent"
+            width={56}
+            height={56}
+            className="mb-4"
+          />
           <h1 className="text-2xl font-bold tracking-tight">IsyAgent</h1>
           <p className="text-sm text-muted-foreground mt-1">
             El cerebro de tu agencia
