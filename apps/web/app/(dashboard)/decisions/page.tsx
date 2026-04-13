@@ -1,9 +1,8 @@
 "use client";
 
-import { useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import {
   Inbox,
   CheckCircle2,
@@ -12,41 +11,11 @@ import {
   Zap,
   ArrowRight,
   Sparkles,
+  Loader2,
 } from "lucide-react";
-
-// ── Mock data — will be replaced with tRPC calls once DB is connected ────────
-const MOCK_DECISIONS = [
-  {
-    id: "1",
-    title: "Crear tarea: Diseño de logo para Café Buena Vista",
-    description: "El agente detectó un mensaje del cliente pidiendo un rediseño de logo. Se propone crear una tarea en IsyTask con prioridad normal.",
-    skillName: "createTask",
-    urgency: 1,
-    status: "PENDING",
-    clientName: "Café Buena Vista",
-    createdAt: new Date(Date.now() - 1000 * 60 * 15), // 15 min ago
-  },
-  {
-    id: "2",
-    title: "Borrador: Post de Instagram para Gimnasio Poder",
-    description: "Basado en el calendario de contenido, toca publicar un post motivacional. El agente generó un copy y seleccionó una imagen del brand kit.",
-    skillName: "draftPost",
-    urgency: 0,
-    status: "PENDING",
-    clientName: "Gimnasio Poder",
-    createdAt: new Date(Date.now() - 1000 * 60 * 45), // 45 min ago
-  },
-  {
-    id: "3",
-    title: "Responder DM: @mariag pregunta por precios",
-    description: "Un seguidor preguntó por los precios del servicio premium. El agente preparó una respuesta basada en la memoria de servicios.",
-    skillName: "replyDM",
-    urgency: 2,
-    status: "PENDING",
-    clientName: "Studio Bella",
-    createdAt: new Date(Date.now() - 1000 * 60 * 5), // 5 min ago
-  },
-];
+import { trpc } from "@/lib/trpc/client";
+import { formatDistanceToNow } from "date-fns";
+import { es } from "date-fns/locale";
 
 const URGENCY_COLORS: Record<number, string> = {
   0: "bg-gray-100 text-gray-600",
@@ -66,15 +35,34 @@ const SKILL_ICONS: Record<string, typeof Zap> = {
 };
 
 export default function DecisionsPage() {
-  const [decisions, setDecisions] = useState(MOCK_DECISIONS);
+  const utils = trpc.useUtils();
 
-  const pendingCount = decisions.filter((d) => d.status === "PENDING").length;
+  const { data: decisions, isLoading } = trpc.decisions.list.useQuery({
+    limit: 30,
+  });
+
+  const { data: stats } = trpc.decisions.stats.useQuery();
+
+  const actMutation = trpc.decisions.act.useMutation({
+    onSuccess: () => {
+      utils.decisions.list.invalidate();
+      utils.decisions.stats.invalidate();
+    },
+  });
 
   const handleAction = (id: string, action: "APPROVED" | "REJECTED") => {
-    setDecisions((prev) =>
-      prev.map((d) => (d.id === id ? { ...d, status: action } : d))
-    );
+    actMutation.mutate({ id, action });
   };
+
+  const pendingCount = stats?.pending ?? 0;
+
+  if (isLoading) {
+    return (
+      <div className="flex h-full items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-brand-600" />
+      </div>
+    );
+  }
 
   return (
     <div className="p-6 max-w-4xl mx-auto">
@@ -89,19 +77,26 @@ export default function DecisionsPage() {
             Tu agente preparó {pendingCount} acciones para que las revises
           </p>
         </div>
-        <div className="flex items-center gap-3">
-          <div className="text-center">
+        <div className="flex items-center gap-4 text-center">
+          <div>
             <p className="text-2xl font-bold text-brand-600">{pendingCount}</p>
             <p className="text-xs text-muted-foreground">Pendientes</p>
           </div>
+          {(stats?.todayApproved ?? 0) > 0 && (
+            <div>
+              <p className="text-2xl font-bold text-green-600">{stats!.todayApproved}</p>
+              <p className="text-xs text-muted-foreground">Aprobadas hoy</p>
+            </div>
+          )}
         </div>
       </div>
 
       {/* Decision Cards */}
       <div className="space-y-4">
-        {decisions.map((decision) => {
+        {decisions?.map((decision) => {
           const SkillIcon = SKILL_ICONS[decision.skillName] ?? Zap;
           const isPending = decision.status === "PENDING";
+          const isActing = actMutation.isLoading && actMutation.variables?.id === decision.id;
 
           return (
             <Card
@@ -110,23 +105,19 @@ export default function DecisionsPage() {
             >
               <CardContent className="p-5">
                 <div className="flex items-start gap-4">
-                  {/* Icon */}
                   <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-brand-50">
                     <SkillIcon className="h-5 w-5 text-brand-600" />
                   </div>
 
-                  {/* Content */}
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap mb-1">
                       <h3 className="font-semibold text-sm">{decision.title}</h3>
-                      <Badge
-                        className={URGENCY_COLORS[decision.urgency]}
-                      >
+                      <Badge className={URGENCY_COLORS[decision.urgency]}>
                         {URGENCY_LABELS[decision.urgency]}
                       </Badge>
-                      {decision.clientName && (
+                      {decision.client && (
                         <Badge variant="outline" className="text-xs">
-                          {decision.clientName}
+                          {decision.client.name}
                         </Badge>
                       )}
                     </div>
@@ -134,21 +125,26 @@ export default function DecisionsPage() {
                       {decision.description}
                     </p>
 
-                    {/* Actions */}
                     {isPending ? (
                       <div className="flex items-center gap-2">
                         <Button
                           size="sm"
                           onClick={() => handleAction(decision.id, "APPROVED")}
+                          disabled={isActing}
                           className="gap-1"
                         >
-                          <CheckCircle2 className="h-3.5 w-3.5" />
+                          {isActing ? (
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          ) : (
+                            <CheckCircle2 className="h-3.5 w-3.5" />
+                          )}
                           Aprobar
                         </Button>
                         <Button
                           size="sm"
                           variant="outline"
                           onClick={() => handleAction(decision.id, "REJECTED")}
+                          disabled={isActing}
                           className="gap-1"
                         >
                           <XCircle className="h-3.5 w-3.5" />
@@ -156,22 +152,29 @@ export default function DecisionsPage() {
                         </Button>
                         <span className="text-xs text-muted-foreground ml-2 flex items-center gap-1">
                           <Clock className="h-3 w-3" />
-                          {Math.round(
-                            (Date.now() - decision.createdAt.getTime()) / 60000
-                          )}
-                          m
+                          {formatDistanceToNow(new Date(decision.createdAt), {
+                            addSuffix: false,
+                            locale: es,
+                          })}
                         </span>
                       </div>
                     ) : (
-                      <Badge
-                        variant={
-                          decision.status === "APPROVED" ? "success" : "destructive"
-                        }
-                      >
-                        {decision.status === "APPROVED"
-                          ? "Aprobado"
-                          : "Rechazado"}
-                      </Badge>
+                      <div className="flex items-center gap-2">
+                        <Badge
+                          className={
+                            decision.status === "APPROVED"
+                              ? "bg-green-100 text-green-700"
+                              : "bg-red-100 text-red-700"
+                          }
+                        >
+                          {decision.status === "APPROVED" ? "Aprobado" : "Rechazado"}
+                        </Badge>
+                        {decision.actor && (
+                          <span className="text-xs text-muted-foreground">
+                            por {decision.actor.name}
+                          </span>
+                        )}
+                      </div>
                     )}
                   </div>
                 </div>
@@ -181,7 +184,7 @@ export default function DecisionsPage() {
         })}
       </div>
 
-      {decisions.length === 0 && (
+      {(!decisions || decisions.length === 0) && (
         <Card className="p-12 text-center">
           <Inbox className="h-12 w-12 mx-auto text-muted-foreground/30 mb-3" />
           <p className="text-muted-foreground font-medium">

@@ -91,6 +91,63 @@ export const conversationsRouter = router({
       });
     }),
 
+  // Send a message (creates conversation if needed, stores user message, returns mock assistant reply for now)
+  sendMessage: protectedProcedure
+    .input(sendMessageSchema)
+    .mutation(async ({ ctx, input }) => {
+      const orgId = getOrgId(ctx);
+      const userId = ctx.session.user.id;
+
+      // Create or reuse conversation
+      let conversationId = input.conversationId;
+      if (!conversationId) {
+        const conv = await ctx.db.conversation.create({
+          data: {
+            organizationId: orgId,
+            clientId: input.clientId,
+            title: input.content.slice(0, 80),
+          },
+        });
+        conversationId = conv.id;
+      }
+
+      // Store user message
+      const userMsg = await ctx.db.message.create({
+        data: {
+          conversationId,
+          role: "user",
+          content: input.content,
+          userId,
+        },
+      });
+
+      // TODO: Replace with AgentOrchestrator.chat() in Step 4
+      // For now, return a simple echo-based reply
+      const assistantContent = getPlaceholderReply(input.content);
+
+      const assistantMsg = await ctx.db.message.create({
+        data: {
+          conversationId,
+          role: "assistant",
+          content: assistantContent,
+          llmTier: "SONNET",
+          llmModel: "placeholder",
+        },
+      });
+
+      // Update conversation timestamp
+      await ctx.db.conversation.update({
+        where: { id: conversationId },
+        data: { updatedAt: new Date() },
+      });
+
+      return {
+        conversationId,
+        userMessage: userMsg,
+        assistantMessage: assistantMsg,
+      };
+    }),
+
   // Archive a conversation
   archive: protectedProcedure
     .input(z.object({ id: z.string() }))
@@ -103,3 +160,18 @@ export const conversationsRouter = router({
       });
     }),
 });
+
+// Placeholder responses until Anthropic streaming is connected
+function getPlaceholderReply(userInput: string): string {
+  const lower = userInput.toLowerCase();
+  if (lower.includes("tarea") || lower.includes("task")) {
+    return "Entendido. Voy a preparar una propuesta de tarea para que la revises.\n\n📋 **Acción propuesta:** Crear tarea en IsyTask\n\nLa enviaré a tu Bandeja de Decisiones para que la apruebes.";
+  }
+  if (lower.includes("post") || lower.includes("publicación") || lower.includes("instagram")) {
+    return "¡Perfecto! Déjame revisar la memoria de marca del cliente y preparar un borrador.\n\n📝 **Acción propuesta:** Crear borrador de publicación\n\nAparecerá en tu Bandeja de Decisiones.";
+  }
+  if (lower.includes("mensaje") || lower.includes("dm") || lower.includes("responder")) {
+    return "Revisé los mensajes recientes. Puedo preparar respuestas basándome en la memoria de servicios y precios. ¿Quieres que lo haga?";
+  }
+  return "Entendido. Puedo crear tareas, redactar publicaciones, revisar mensajes o darte un resumen. ¿Qué prefieres?";
+}

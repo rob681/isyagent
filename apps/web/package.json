@@ -10,16 +10,18 @@
     "db:generate": "cd ../.. && pnpm --filter @isyagent/db db:generate"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.39.0",
+    "@isyagent/ai": "workspace:*",
     "@isyagent/api": "workspace:*",
     "@isyagent/db": "workspace:*",
     "@isyagent/shared": "workspace:*",
-    "@isyagent/ai": "workspace:*",
     "@radix-ui/react-avatar": "^1.1.0",
     "@radix-ui/react-slot": "^1.1.0",
     "@tanstack/react-query": "^4.36.0",
     "@trpc/client": "^10.45.0",
     "@trpc/react-query": "^10.45.0",
     "@trpc/server": "^10.45.0",
+    "bcryptjs": "^3.0.3",
     "class-variance-authority": "^0.7.0",
     "clsx": "^2.1.0",
     "date-fns": "^3.6.0",
@@ -33,6 +35,7 @@
     "tailwindcss-animate": "^1.0.7"
   },
   "devDependencies": {
+    "@types/bcryptjs": "^3.0.0",
     "@types/node": "^20",
     "@types/react": "^18",
     "@types/react-dom": "^18",

@@ -2,13 +2,14 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useSession, signOut } from "next-auth/react";
 import { cn } from "@/lib/utils";
 import {
   Inbox,
   MessageSquare,
   Brain,
   Zap,
-  Settings,
+  LogOut,
   Sparkles,
 } from "lucide-react";
 
@@ -41,6 +42,15 @@ const navItems = [
 
 export function Sidebar() {
   const pathname = usePathname();
+  const { data: session } = useSession();
+
+  const user = session?.user;
+  const initials = user?.name
+    ?.split(" ")
+    .map((n) => n[0])
+    .join("")
+    .toUpperCase()
+    .slice(0, 2) ?? "?";
 
   return (
     <aside className="flex h-screen w-64 flex-col border-r bg-card">
@@ -74,16 +84,27 @@ export function Sidebar() {
         })}
       </nav>
 
-      {/* Footer */}
+      {/* Footer — user info */}
       <div className="border-t px-4 py-3">
         <div className="flex items-center gap-2">
-          <div className="h-8 w-8 rounded-full bg-brand-100 flex items-center justify-center">
-            <Settings className="h-4 w-4 text-brand-600" />
+          <div className="h-8 w-8 rounded-full bg-brand-100 flex items-center justify-center flex-shrink-0">
+            <span className="text-xs font-bold text-brand-700">{initials}</span>
           </div>
           <div className="flex-1 min-w-0">
-            <p className="text-sm font-medium truncate">Mi Agencia</p>
-            <p className="text-xs text-muted-foreground">Plan Starter</p>
+            <p className="text-sm font-medium truncate">
+              {user?.organizationName ?? "Cargando..."}
+            </p>
+            <p className="text-xs text-muted-foreground truncate">
+              {user?.name ?? ""}
+            </p>
           </div>
+          <button
+            onClick={() => signOut({ callbackUrl: "/login" })}
+            className="flex-shrink-0 p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+            title="Cerrar sesión"
+          >
+            <LogOut className="h-4 w-4" />
+          </button>
         </div>
       </div>
     </aside>
