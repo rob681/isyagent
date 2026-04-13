@@ -52,7 +52,7 @@ export const memoryRouter = router({
           category: input.category,
           content: input.content,
           isEditable: input.level === "IDENTITY",
-          embedding: [], // Will be computed async
+          embedding: undefined,
         },
       });
     }),
@@ -80,7 +80,7 @@ export const memoryRouter = router({
           content: input.content,
           category: input.category ?? chunk.category,
           editedAt: new Date(),
-          embedding: [], // Will be recomputed async
+          embedding: undefined,
         },
       });
     }),
@@ -141,7 +141,7 @@ export const memoryRouter = router({
             level: "IDENTITY",
             content: input.rawContent,
             isEditable: true,
-            embedding: [],
+            embedding: undefined,
           },
         });
 

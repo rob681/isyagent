@@ -36,6 +36,11 @@ interface CreateTaskInput {
   priority?: string; // Alias for category (HIGH → URGENTE)
 }
 
+interface SummarizeClientInput {
+  clientId?: string; // IsyAgent client ID
+  period?: "week" | "month" | "all";
+}
+
 interface DraftPostInput {
   clientId?: string; // IsyAgent client ID — we resolve isysocialClientId
   network?: "FACEBOOK" | "INSTAGRAM" | "LINKEDIN" | "TIKTOK" | "X";
@@ -66,6 +71,21 @@ export async function executeSkill(
 
       case "draftPost":
         return await executeDraftPost(db, skillInput as unknown as DraftPostInput, context);
+
+      case "summarizeClient":
+        return await executeSummarizeClient(db, skillInput as unknown as SummarizeClientInput, context);
+
+      case "listDMs":
+        return {
+          success: false,
+          error: "listDMs requiere conexión OAuth a Instagram/Facebook. Configura las credenciales en Habilidades.",
+        };
+
+      case "replyDM":
+        return {
+          success: false,
+          error: "replyDM requiere conexión OAuth a Instagram/Facebook. Configura las credenciales en Habilidades.",
+        };
 
       default:
         return {
@@ -299,6 +319,100 @@ async function executeDraftPost(
       copy,
       agencyId,
       clientId: isysocialClientId,
+    },
+  };
+}
+
+// ──────────────────────────────────────────────
+// summarizeClient — Cross-product activity summary
+// ──────────────────────────────────────────────
+
+async function executeSummarizeClient(
+  db: PrismaClient,
+  input: SummarizeClientInput,
+  context: { organizationId: string; decisionId: string; clientId?: string | null }
+): Promise<SkillResult> {
+  const agentClientId = input.clientId || context.clientId;
+  if (!agentClientId) {
+    return { success: false, error: "No se especificó un cliente para resumir" };
+  }
+
+  const client = await db.client.findUnique({
+    where: { id: agentClientId },
+    select: { name: true, isytaskClientId: true, isysocialClientId: true },
+  });
+
+  if (!client) {
+    return { success: false, error: "Cliente no encontrado" };
+  }
+
+  const org = await db.organization.findUnique({
+    where: { id: context.organizationId },
+    select: { isytaskAgencyId: true, isysocialAgencyId: true },
+  });
+
+  const since =
+    input.period === "week"
+      ? new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)
+      : input.period === "month"
+      ? new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)
+      : new Date(0);
+
+  let taskStats = { total: 0, completed: 0, pending: 0 };
+  let postStats = { total: 0, published: 0, drafts: 0 };
+
+  // Fetch IsyTask stats
+  if (org?.isytaskAgencyId && client.isytaskClientId) {
+    const tasks: any[] = await db.$queryRaw`
+      SELECT status, COUNT(*) as count
+      FROM tasks
+      WHERE "clientId" = ${client.isytaskClientId}
+        AND "agencyId" = ${org.isytaskAgencyId}
+        AND "createdAt" >= ${since}
+      GROUP BY status
+    `;
+
+    for (const row of tasks) {
+      const count = Number(row.count);
+      taskStats.total += count;
+      if (row.status === "FINALIZADA") taskStats.completed += count;
+      else if (row.status === "RECIBIDA" || row.status === "EN_PROGRESO") taskStats.pending += count;
+    }
+  }
+
+  // Fetch IsySocial stats
+  if (org?.isysocialAgencyId && client.isysocialClientId) {
+    const posts: any[] = await db.$queryRaw`
+      SELECT status, COUNT(*) as count
+      FROM isysocial.iso_posts
+      WHERE "clientId" = ${client.isysocialClientId}
+        AND "agencyId" = ${org.isysocialAgencyId}
+        AND "createdAt" >= ${since}
+      GROUP BY status
+    `;
+
+    for (const row of posts) {
+      const count = Number(row.count);
+      postStats.total += count;
+      if (row.status === "PUBLISHED") postStats.published += count;
+      else if (row.status === "DRAFT") postStats.drafts += count;
+    }
+  }
+
+  const summary = `Resumen de ${client.name} (${input.period || "total"}):
+- Tareas: ${taskStats.total} total, ${taskStats.completed} completadas, ${taskStats.pending} pendientes
+- Posts: ${postStats.total} total, ${postStats.published} publicados, ${postStats.drafts} borradores`;
+
+  console.log(`[SkillExecutor] Summarized client ${agentClientId}`);
+
+  return {
+    success: true,
+    data: {
+      clientName: client.name,
+      period: input.period || "all",
+      taskStats,
+      postStats,
+      summary,
     },
   };
 }

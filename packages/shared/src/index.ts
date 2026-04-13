@@ -28,26 +28,39 @@ export const MEMORY_LEVEL_LABELS: Record<string, string> = {
   EPISODIC: "Episódica",
 };
 
-export const SKILL_LABELS: Record<string, { name: string; description: string }> = {
+export const SKILL_LABELS: Record<
+  string,
+  { name: string; description: string; product: "isytask" | "isysocial" | "agent"; risk: "low" | "medium" | "high" }
+> = {
   createTask: {
     name: "Crear tarea",
     description: "Crea una tarea en IsyTask para un cliente",
+    product: "isytask",
+    risk: "medium",
   },
   draftPost: {
     name: "Borrador de publicación",
-    description: "Genera un borrador de post para IsySocial",
+    description: "Crea un borrador de post en IsySocial (estado DRAFT, no se publica)",
+    product: "isysocial",
+    risk: "low",
   },
   listDMs: {
     name: "Ver mensajes directos",
-    description: "Lista los DMs recientes de Instagram/Facebook",
+    description: "Lista los DMs recientes de redes sociales conectadas",
+    product: "isysocial",
+    risk: "low",
   },
   replyDM: {
     name: "Responder DM",
-    description: "Responde a un mensaje directo de redes sociales",
+    description: "Envía una respuesta a un mensaje directo (acción irreversible)",
+    product: "isysocial",
+    risk: "high",
   },
   summarizeClient: {
     name: "Resumen de cliente",
-    description: "Genera un resumen del estado actual del cliente",
+    description: "Genera un resumen de actividad de un cliente (tareas + posts + DMs)",
+    product: "agent",
+    risk: "low",
   },
 };
 

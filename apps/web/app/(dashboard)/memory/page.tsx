@@ -18,6 +18,8 @@ import {
   X,
   Upload,
   Link,
+  Sparkles,
+  CheckCircle2,
 } from "lucide-react";
 import { trpc } from "@/lib/trpc/client";
 
@@ -56,6 +58,8 @@ export default function MemoryPage() {
   const [ingestResult, setIngestResult] = useState<{ success: boolean; message: string } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  const [vectorizeResult, setVectorizeResult] = useState<string | null>(null);
+
   const { data: memories, isLoading: loadingMemories } = trpc.memory.list.useQuery({
     limit: 50,
   });
@@ -82,6 +86,18 @@ export default function MemoryPage() {
       setShowAddForm(false);
       setNewCategory("");
       setNewContent("");
+    },
+  });
+
+  const vectorizeAllMutation = trpc.memory.vectorizeAll.useMutation({
+    onSuccess: (data) => {
+      utils.memory.list.invalidate();
+      setVectorizeResult(`✅ ${data.vectorized} fragmentos vectorizados`);
+      setTimeout(() => setVectorizeResult(null), 4000);
+    },
+    onError: (err) => {
+      setVectorizeResult(`❌ ${err.message}`);
+      setTimeout(() => setVectorizeResult(null), 4000);
     },
   });
 
@@ -186,7 +202,7 @@ export default function MemoryPage() {
             Lo que tu agente sabe sobre tu negocio. Edita la identidad para mejorar sus respuestas.
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2 flex-wrap">
           <Button
             variant="outline"
             className="gap-1"
@@ -203,12 +219,34 @@ export default function MemoryPage() {
             <Link className="h-4 w-4" />
             Sitio web
           </Button>
+          <Button
+            variant="outline"
+            className="gap-1"
+            onClick={() => vectorizeAllMutation.mutate({ limit: 200 })}
+            disabled={vectorizeAllMutation.isLoading}
+            title="Vectoriza memorias para búsqueda semántica (RAG)"
+          >
+            {vectorizeAllMutation.isLoading ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <Sparkles className="h-4 w-4" />
+            )}
+            Vectorizar
+          </Button>
           <Button className="gap-1" onClick={() => setShowAddForm(!showAddForm)}>
             <Plus className="h-4 w-4" />
             Manual
           </Button>
         </div>
       </div>
+
+      {/* Vectorize result toast */}
+      {vectorizeResult && (
+        <div className="mb-4 rounded-lg border border-brand-200 bg-brand-50 px-4 py-2.5 text-sm text-brand-800 flex items-center gap-2">
+          <CheckCircle2 className="h-4 w-4 text-brand-600 shrink-0" />
+          {vectorizeResult}
+        </div>
+      )}
 
       {/* Ingest form */}
       {showIngestForm && (
@@ -373,7 +411,7 @@ export default function MemoryPage() {
               <CardContent className="p-4">
                 <div className="flex items-start justify-between gap-3">
                   <div className="flex-1">
-                    <div className="flex items-center gap-2 mb-2">
+                    <div className="flex items-center gap-2 mb-2 flex-wrap">
                       <Badge className={LEVEL_COLORS[mem.level]}>
                         {LEVEL_LABELS[mem.level]}
                       </Badge>
@@ -386,6 +424,14 @@ export default function MemoryPage() {
                         <span className="text-xs text-muted-foreground">
                           vía {mem.source.label}
                         </span>
+                      )}
+                      {mem.embedding ? (
+                        <span className="text-[10px] text-green-600 flex items-center gap-0.5">
+                          <Sparkles className="h-3 w-3" />
+                          vectorizado
+                        </span>
+                      ) : (
+                        <span className="text-[10px] text-amber-500">sin vector</span>
                       )}
                     </div>
 

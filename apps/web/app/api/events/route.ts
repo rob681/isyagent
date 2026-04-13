@@ -98,7 +98,7 @@ export async function POST(req: NextRequest) {
         category: `${payload.source}:${payload.event.split(".")[0]}`, // e.g. "isytask:task"
         content,
         isEditable: false,
-        embedding: [],
+        embedding: undefined,
       },
     });
 

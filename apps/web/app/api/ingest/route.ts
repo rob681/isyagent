@@ -101,7 +101,7 @@ export async function POST(req: NextRequest) {
           category: type === "PDF" ? "documento" : "sitio-web",
           content: chunks[i],
           isEditable: true,
-          embedding: [],
+          embedding: undefined,
         },
       });
     }

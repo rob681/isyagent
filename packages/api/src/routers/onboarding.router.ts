@@ -1,4 +1,5 @@
-import { router, protectedProcedure, getOrgId } from "../trpc";
+import { z } from "zod";
+import { router, protectedProcedure, adminProcedure, getOrgId } from "../trpc";
 import { onboardingSchema } from "@isyagent/shared";
 
 export const onboardingRouter = router({
@@ -78,7 +79,7 @@ export const onboardingRouter = router({
               category: "description",
               content: src.rawContent,
               isEditable: true,
-              embedding: [],
+              embedding: undefined,
             },
           });
           await ctx.db.memorySource.update({
@@ -89,5 +90,41 @@ export const onboardingRouter = router({
       }
 
       return { success: true, clientId };
+    }),
+
+  // Get current organization info (for settings)
+  getOrg: protectedProcedure.query(async ({ ctx }) => {
+    const orgId = getOrgId(ctx);
+    return ctx.db.organization.findUnique({
+      where: { id: orgId },
+      select: {
+        id: true,
+        name: true,
+        slug: true,
+        plan: true,
+        isytaskAgencyId: true,
+        isysocialAgencyId: true,
+        llmMonthlyBudgetCents: true,
+      },
+    });
+  }),
+
+  // Update cross-product agency IDs
+  updateAgencyIds: adminProcedure
+    .input(
+      z.object({
+        isytaskAgencyId: z.string().optional(),
+        isysocialAgencyId: z.string().optional(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const orgId = getOrgId(ctx);
+      return ctx.db.organization.update({
+        where: { id: orgId },
+        data: {
+          isytaskAgencyId: input.isytaskAgencyId || null,
+          isysocialAgencyId: input.isysocialAgencyId || null,
+        },
+      });
     }),
 });

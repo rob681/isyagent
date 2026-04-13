@@ -118,7 +118,7 @@ async function main() {
         category: chunk.category,
         content: chunk.content,
         isEditable: chunk.isEditable,
-        embedding: null,
+        embedding: undefined,
       },
     });
   }
