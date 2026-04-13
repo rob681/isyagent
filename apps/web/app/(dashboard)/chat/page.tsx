@@ -59,7 +59,7 @@ export default function ChatPage() {
 
   // Check if org has memory configured
   const memoryQuery = trpc.memory.list.useQuery({ limit: 1 }, { refetchOnWindowFocus: false });
-  const hasMemory = (memoryQuery.data?.items?.length ?? 0) > 0;
+  const hasMemory = (Array.isArray(memoryQuery.data) ? memoryQuery.data.length : 0) > 0;
   const memoryLoaded = !memoryQuery.isLoading;
 
   const conversationsQuery = trpc.conversations.list.useQuery(

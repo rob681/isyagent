@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useSession, signOut } from "next-auth/react";
@@ -19,6 +19,7 @@ import {
   LayoutDashboard,
   Users2,
   FileText,
+  Map,
 } from "lucide-react";
 import { trpc } from "@/lib/trpc/client";
 
@@ -50,7 +51,7 @@ const navItems = [
   {
     label: "Planificador",
     href: "/planner",
-    icon: Brain,
+    icon: Map,
     description: "Agente multi-paso con Opus",
   },
   {
@@ -89,27 +90,84 @@ export function Sidebar() {
   const pathname = usePathname();
   const { data: session } = useSession();
   const [showNotifs, setShowNotifs] = useState(false);
+  const [sseUnreadCount, setSseUnreadCount] = useState<number | null>(null);
+  const [liveNotifs, setLiveNotifs] = useState<Array<{
+    id: string; title: string; body: string; type: string; isRead: boolean; createdAt: string;
+  }>>([]);
+  const eventSourceRef = useRef<EventSource | null>(null);
+  const utils = trpc.useUtils();
 
-  const { data: unreadCount } = trpc.notifications.unreadCount.useQuery(undefined, {
-    refetchInterval: 15000, // Poll every 15s
+  // SSE — real-time notifications (replaces 15s polling)
+  const connectSSE = useCallback(() => {
+    if (eventSourceRef.current) {
+      eventSourceRef.current.close();
+    }
+    const es = new EventSource("/api/notifications/stream");
+    eventSourceRef.current = es;
+
+    es.onmessage = (e) => {
+      try {
+        const event = JSON.parse(e.data);
+        if (event.type === "unread_count") {
+          setSseUnreadCount(event.count);
+        } else if (event.type === "notification") {
+          setLiveNotifs((prev) => {
+            const exists = prev.find((n) => n.id === event.notification.id);
+            if (exists) return prev;
+            return [event.notification, ...prev].slice(0, 20);
+          });
+          setSseUnreadCount((c) => (c ?? 0) + 1);
+        } else if (event.type === "reconnect") {
+          // Server asking us to reconnect cleanly
+          setTimeout(connectSSE, 1000);
+        }
+      } catch {
+        // ignore parse errors
+      }
+    };
+
+    es.onerror = () => {
+      es.close();
+      // Reconnect after 5s on error
+      setTimeout(connectSSE, 5000);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (session?.user) {
+      connectSSE();
+    }
+    return () => {
+      eventSourceRef.current?.close();
+    };
+  }, [session?.user, connectSSE]);
+
+  // Fallback tRPC query for initial load + dropdown
+  const { data: trpcUnread } = trpc.notifications.unreadCount.useQuery(undefined, {
+    refetchOnWindowFocus: false,
+    staleTime: 60000,
   });
-  const { data: notifications } = trpc.notifications.list.useQuery(
+  const { data: notifications, refetch: refetchNotifs } = trpc.notifications.list.useQuery(
     { limit: 10 },
-    { enabled: showNotifs }
+    { enabled: showNotifs, refetchOnWindowFocus: false }
   );
+
+  const unreadCount = sseUnreadCount ?? trpcUnread ?? 0;
+
   const markRead = trpc.notifications.markRead.useMutation({
     onSuccess: () => {
-      utils.notifications.unreadCount.invalidate();
+      setSseUnreadCount((c) => Math.max(0, (c ?? 1) - 1));
       utils.notifications.list.invalidate();
+      if (showNotifs) refetchNotifs();
     },
   });
   const markAllRead = trpc.notifications.markAllRead.useMutation({
     onSuccess: () => {
-      utils.notifications.unreadCount.invalidate();
+      setSseUnreadCount(0);
       utils.notifications.list.invalidate();
+      if (showNotifs) refetchNotifs();
     },
   });
-  const utils = trpc.useUtils();
 
   const user = session?.user;
   const initials = user?.name

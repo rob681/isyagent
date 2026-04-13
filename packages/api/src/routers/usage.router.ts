@@ -94,6 +94,30 @@ export const usageRouter = router({
     };
   }),
 
+  // Purpose breakdown for current month
+  byPurpose: protectedProcedure.query(async ({ ctx }) => {
+    const orgId = getOrgId(ctx);
+    const now = new Date();
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+
+    const raw = await ctx.db.lLMUsage.groupBy({
+      by: ["purpose"],
+      where: { organizationId: orgId, createdAt: { gte: monthStart, lt: monthEnd } },
+      _sum: { totalTokens: true, costCents: true },
+      _count: true,
+    });
+
+    return raw
+      .map((r) => ({
+        purpose: r.purpose ?? "chat",
+        tokens: r._sum.totalTokens ?? 0,
+        costCents: r._sum.costCents ?? 0,
+        count: r._count,
+      }))
+      .sort((a, b) => b.costCents - a.costCents);
+  }),
+
   // Recent: last 20 LLM usage entries
   recent: protectedProcedure.query(async ({ ctx }) => {
     const orgId = getOrgId(ctx);
